@@ -136,6 +136,15 @@ Designed so the UI + host packages can later be embedded natively in t3code.
 - t3code native integration: MCP toolkit `plan/` (tools: plan_open, plan_wait,
   plan_reply), contract module, `RightPanelKind` "plan", `Transport` over Effect
   RPC, feedback -> `thread.turn.start`.
+  Parallel wiring a new toolkit needs (from the survey): tool descriptions for the
+  agent prompt in `apps/server/src/provider/CodexDeveloperInstructions.ts`; per-toolkit
+  enable toggle in `packages/contracts/src/settings.ts` +
+  `apps/web/src/components/settings/IntegrationsSettings.tsx`; a request/response
+  contract like `packages/contracts/src/previewAutomation.ts` carried by a broker
+  (`PreviewAutomationBroker.ts` is the model); timeline labels in
+  `packages/client-runtime/src/work-log/presentation.ts`. The preview feature is
+  split across four dirs (`apps/desktop/src/preview`, `apps/server/src/mcp/toolkits/preview`,
+  `apps/server/src/preview`, `apps/web/src/components/preview`); mirror that split.
 - Agent-side hook: auto `pp wait` via a Stop hook (like bulletin-board's async
   rewake) so the agent resumes when feedback arrives without a blocking bash call.
 - GitHub remote + CI (typecheck/test) once the user wants it published.
