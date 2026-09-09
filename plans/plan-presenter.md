@@ -66,7 +66,7 @@ Designed so the UI + host packages can later be embedded natively in t3code.
 7. [x] Skill: SKILL.md, `pp` CLI (serve/new/page/open/review/wait/feedback/reply/resolve/ack/close/rm), installer, authoring reference.
 8. [x] Desktop shell (Electrobun config + Bun main; typechecks; `electrobun build` produced `build/dev-win-x64`).
 9. [x] README, example session, unit tests (17), end-to-end CLI exercise, browser check via t3code preview.
-10. [ ] **Current:** launch check of the built desktop app, clean the demo session, commit.
+10. [x] Launch check of the built desktop app (in-process host answered on 27411, UI bundled), demo session cleaned, committed in 5 commits, skill installed to `~/.claude/skills/plan-presenter`.
 
 ## Findings / gotchas
 
@@ -116,6 +116,7 @@ Designed so the UI + host packages can later be embedded natively in t3code.
   block click opens composer, submit creates marker + sidebar item, "Send to agent"
   batches.
 - 2026-09-09: desktop shell on Electrobun 1.18.1; `electrobun build` OK on Windows.
+- 2026-09-09: built app launched and served the UI from its in-process host; installer run for real; all five workspaces typecheck; committed.
 
 ## Open questions for the user
 
