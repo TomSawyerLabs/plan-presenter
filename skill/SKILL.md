@@ -1,6 +1,6 @@
 ---
 name: plan-presenter
-description: Present a plan, analysis, data, or design to the human in a rich clickable UI (Markdown + React components, charts, Mermaid diagrams, media, links that open local folders) and collect their inline feedback. Use when a plan or result is too big or too visual for chat, when you need sign-off on specific parts, or when you want to ask several structured questions at once. The human clicks any paragraph/chart/diagram to comment, request changes, approve, or ask follow-ups; `pp wait` blocks until they press "Send to agent" and returns their feedback with source line numbers.
+description: Present a plan, analysis, data, or design to the human in a rich clickable UI (Markdown + React components, charts, Mermaid diagrams, media, links that open local folders) and collect their inline feedback. Use when a plan or result is too big or too visual for chat, when you need sign-off on specific parts, or when you want to ask several structured questions at once.
 ---
 
 # plan-presenter
