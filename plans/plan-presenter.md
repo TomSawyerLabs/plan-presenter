@@ -54,6 +54,11 @@ Designed so the UI + host packages can later be embedded natively in t3code.
 - **Block ids** = hash(type + normalised excerpt) + occurrence counter: stable
   across edits elsewhere, changes when the block is rewritten (UI shows
   "block changed").
+- **GitHub: `TomSawyerLabs/plan-presenter`, public** (matches the other TSL repos), default `master`.
+- **Tooling: oxfmt (printWidth 100) + oxlint + lefthook**, like the newer TSL repos and t3code.
+  Noisy stylistic unicorn rules are off in `.oxlintrc.json`; the React compiler rules stay on.
+- **CI on GitHub Actions first**, Blacksmith later once the workflow is stable (user's call).
+  Desktop builds use `electrobun build --env=canary` and upload `apps/desktop/artifacts` per platform.
 
 ## Plan / steps
 
@@ -117,6 +122,7 @@ Designed so the UI + host packages can later be embedded natively in t3code.
   batches.
 - 2026-09-09: desktop shell on Electrobun 1.18.1; `electrobun build` OK on Windows.
 - 2026-09-09: built app launched and served the UI from its in-process host; installer run for real; all five workspaces typecheck; committed.
+- 2026-09-09: pushed to github.com/TomSawyerLabs/plan-presenter (public). Added oxfmt/oxlint/lefthook, formatted, fixed lint. Added CI (check + 5-platform desktop matrix); first run in progress.
 
 ## Open questions for the user
 
@@ -147,7 +153,8 @@ Designed so the UI + host packages can later be embedded natively in t3code.
   `apps/server/src/preview`, `apps/web/src/components/preview`); mirror that split.
 - Agent-side hook: auto `pp wait` via a Stop hook (like bulletin-board's async
   rewake) so the agent resumes when feedback arrives without a blocking bash call.
-- GitHub remote + CI (typecheck/test) once the user wants it published.
+- Release workflow: tag -> build all platforms -> GitHub Release with installers; then let `pp serve` fetch a release instead of needing a checkout.
+- Move CI runners to Blacksmith once the workflow is stable.
 
 ## Things not to do
 

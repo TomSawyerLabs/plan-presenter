@@ -1,5 +1,7 @@
 # plan-presenter
 
+[![CI](https://github.com/TomSawyerLabs/plan-presenter/actions/workflows/ci.yml/badge.svg)](https://github.com/TomSawyerLabs/plan-presenter/actions/workflows/ci.yml)
+
 An AI agent writes a plan, analysis, or design as MDX pages (Markdown plus a
 small set of React components: charts, Mermaid diagrams, media, folder links,
 inline questions). A human opens it in a browser or the desktop app, clicks on
@@ -27,7 +29,12 @@ agent ◀── pp wait ──────────────────�
 
 ## Quick start
 
+Everything runs from a local checkout; nothing is published yet (CI builds
+desktop installers as workflow artifacts).
+
 ```sh
+git clone git@github.com:TomSawyerLabs/plan-presenter.git
+cd plan-presenter
 bun install
 bun run build                       # builds the UI into packages/ui/dist
 bun run skill/scripts/install.ts    # installs the skill to ~/.claude/skills/plan-presenter
@@ -62,7 +69,11 @@ bun run dev        # host with hot reload on :27411 (serves packages/ui/dist if 
 bun run dev:ui     # Vite dev server on :27412, proxies /api and /ws to the host
 bun run typecheck  # every workspace
 bun test           # host + protocol unit tests
+bun run check      # format:check + lint + typecheck + test (what CI runs)
 ```
+
+Formatting is oxfmt, linting is oxlint; lefthook runs both on staged files at
+commit (installed by `bun install` via `prepare`).
 
 Desktop shell (Electrobun 1.18; downloads platform binaries on first run):
 
