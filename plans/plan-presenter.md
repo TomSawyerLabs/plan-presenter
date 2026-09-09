@@ -72,6 +72,8 @@ Designed so the UI + host packages can later be embedded natively in t3code.
 8. [x] Desktop shell (Electrobun config + Bun main; typechecks; `electrobun build` produced `build/dev-win-x64`).
 9. [x] README, example session, unit tests (17), end-to-end CLI exercise, browser check via t3code preview.
 10. [x] Launch check of the built desktop app (in-process host answered on 27411, UI bundled), demo session cleaned, committed in 5 commits, skill installed to `~/.claude/skills/plan-presenter`.
+11. [x] Publish to GitHub (TomSawyerLabs/plan-presenter) with CI building on all platforms.
+12. [ ] Next: release workflow (tag -> GitHub Release with installers), then Blacksmith runners.
 
 ## Findings / gotchas
 
@@ -122,7 +124,7 @@ Designed so the UI + host packages can later be embedded natively in t3code.
   batches.
 - 2026-09-09: desktop shell on Electrobun 1.18.1; `electrobun build` OK on Windows.
 - 2026-09-09: built app launched and served the UI from its in-process host; installer run for real; all five workspaces typecheck; committed.
-- 2026-09-09: pushed to github.com/TomSawyerLabs/plan-presenter (public). Added oxfmt/oxlint/lefthook, formatted, fixed lint. Added CI (check + 5-platform desktop matrix); first run in progress.
+- 2026-09-09: pushed to github.com/TomSawyerLabs/plan-presenter (public). Added oxfmt/oxlint/lefthook, formatted, fixed lint. Added CI (check + 5-platform desktop matrix). First run green on all five: linux x64/arm64 (`*-Setup.tar.gz` + `.tar.zst`), windows x64 (`*-Setup-canary.zip`), macOS arm64/x64 (`.dmg` + `.app.tar.zst`), each with `*-update.json`. Artifacts ~40-70 MB per platform, ~5 min wall clock.
 
 ## Open questions for the user
 
