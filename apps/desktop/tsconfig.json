@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["bun"],
+    "baseUrl": ".",
+    "paths": {
+      "electrobun/bun": ["./types/electrobun.d.ts"],
+      "electrobun": ["./types/electrobun.d.ts"]
+    }
+  },
+  "include": ["src", "types", "electrobun.config.ts"]
+}

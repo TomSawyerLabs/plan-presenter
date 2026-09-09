@@ -1,0 +1,21 @@
+{
+  "name": "@plan-presenter/desktop",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Thin Electrobun shell: runs the plan-presenter host in-process and opens the UI in a native window.",
+  "scripts": {
+    "dev": "electrobun dev",
+    "build": "electrobun build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@plan-presenter/host": "workspace:*",
+    "@plan-presenter/protocol": "workspace:*",
+    "electrobun": "1.18.1"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.9.0"
+  }
+}
