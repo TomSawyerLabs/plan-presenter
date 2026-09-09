@@ -1,0 +1,12 @@
+{
+  "id": "demo",
+  "title": "Demo: migrate the ingest pipeline",
+  "status": "awaiting-review",
+  "createdAt": "2026-09-09T20:00:00.000Z",
+  "updatedAt": "2026-09-09T20:00:00.000Z",
+  "allowedRoots": [],
+  "pages": [],
+  "meta": {
+    "note": "Example session shipped with the repo. Register it with: pp new --dir examples/demo (or POST /api/sessions/register)."
+  }
+}
