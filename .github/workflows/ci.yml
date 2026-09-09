@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Format, lint, typecheck, test, build UI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run format:check
+      - run: bun run lint
+      - run: bun run typecheck
+      - run: bun run test
+      - run: bun run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui-dist
+          path: packages/ui/dist/
+          retention-days: 7
+
+  desktop:
+    name: Desktop (${{ matrix.name }})
+    needs: check
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x64
+            os: ubuntu-latest
+          - name: linux-arm64
+            os: ubuntu-24.04-arm
+          - name: macos-arm64
+            os: macos-latest
+          - name: macos-x64
+            os: macos-15-intel
+          - name: windows-x64
+            os: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+
+      # The built UI is copied into the app bundle by electrobun.config.ts.
+      - uses: actions/download-artifact@v4
+        with:
+          name: ui-dist
+          path: packages/ui/dist/
+
+      # Electrobun downloads its per-platform core binaries from its own GitHub
+      # release on first use (~50 MB); nothing of ours is fetched from the network.
+      # `--env=canary` produces installers/archives in apps/desktop/artifacts.
+      - name: Build desktop app
+        working-directory: apps/desktop
+        run: bunx electrobun build --env=canary
+
+      - name: List artifacts
+        shell: bash
+        run: ls -la apps/desktop/artifacts/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plan-presenter-${{ matrix.name }}
+          path: apps/desktop/artifacts/
+          retention-days: 14
+          if-no-files-found: error
