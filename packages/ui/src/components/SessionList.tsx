@@ -2,15 +2,31 @@ import { useEffect, useState } from "react";
 import type { SessionSummary } from "@plan-presenter/protocol";
 import type { Transport } from "../transport.ts";
 
-export function SessionList({ transport, onOpen }: { transport: Transport; onOpen: (id: string) => void }) {
+export function SessionList({
+  transport,
+  onOpen,
+}: {
+  transport: Transport;
+  onOpen: (id: string) => void;
+}) {
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const load = () => transport.listSessions().then(setSessions).catch((e) => setError((e as Error).message));
+    const load = () =>
+      transport
+        .listSessions()
+        .then(setSessions)
+        .catch((e) => setError((e as Error).message));
     load();
     const off = transport.subscribe((e) => {
-      if (e.type === "session.changed" || e.type === "session.removed" || e.type === "feedback.changed" || e.type === "feedback.batch") load();
+      if (
+        e.type === "session.changed" ||
+        e.type === "session.removed" ||
+        e.type === "feedback.changed" ||
+        e.type === "feedback.batch"
+      )
+        load();
     });
     return off;
   }, [transport]);
@@ -38,7 +54,8 @@ export function SessionList({ transport, onOpen }: { transport: Transport; onOpe
               {s.openFeedback > 0 && <span className="pp-count">{s.openFeedback} open</span>}
             </div>
             <div className="pp-muted pp-small">
-              {s.pageSummaries.length} page{s.pageSummaries.length === 1 ? "" : "s"} · updated {new Date(s.updatedAt).toLocaleString()} · <code>{s.id}</code>
+              {s.pageSummaries.length} page{s.pageSummaries.length === 1 ? "" : "s"} · updated{" "}
+              {new Date(s.updatedAt).toLocaleString()} · <code>{s.id}</code>
             </div>
           </button>
         ))}

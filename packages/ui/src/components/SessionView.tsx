@@ -3,7 +3,7 @@
  * component an embedder mounts (via <PlanPresenter>) to show one session.
  */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { Feedback, SessionStatus } from "@plan-presenter/protocol";
 import { useSession } from "../state.tsx";
 import { FeedbackSidebar } from "./FeedbackSidebar.tsx";
@@ -21,14 +21,13 @@ export interface SessionViewProps {
 }
 
 export function SessionView({ onBack }: SessionViewProps) {
-  const { session, connected, loading, error, currentPageId, setCurrentPage, feedback } = useSession();
-  const [focused, setFocused] = useState<Feedback | null>(null);
+  const { session, connected, loading, error, currentPageId, setCurrentPage, feedback } =
+    useSession();
+  const [focusedRaw, setFocused] = useState<Feedback | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 900);
 
-  // Clear focus when the page changes underneath.
-  useEffect(() => {
-    if (focused && focused.anchor.pageId !== currentPageId) setFocused(null);
-  }, [currentPageId, focused]);
+  // Focus only applies while its page is the current one.
+  const focused = focusedRaw && focusedRaw.anchor.pageId === currentPageId ? focusedRaw : null;
 
   const openCount = feedback.filter((f) => f.status !== "resolved" && f.kind !== "answer").length;
 
@@ -39,21 +38,36 @@ export function SessionView({ onBack }: SessionViewProps) {
     <div className={`pp-shell${sidebarOpen ? " pp-shell-sidebar" : ""}`}>
       <header className="pp-header">
         {onBack && (
-          <button type="button" className="pp-icon-button" onClick={onBack} aria-label="All sessions">
+          <button
+            type="button"
+            className="pp-icon-button"
+            onClick={onBack}
+            aria-label="All sessions"
+          >
             ←
           </button>
         )}
         <h1 className="pp-title">{session.title}</h1>
         <span className={`pp-pill pp-pill-${session.status}`}>{STATUS_LABEL[session.status]}</span>
         <span className="pp-spacer" />
-        <span className={`pp-pill ${connected ? "pp-pill-ok" : "pp-pill-warn"}`}>{connected ? "live" : "reconnecting…"}</span>
-        <button type="button" className="pp-button" onClick={() => setSidebarOpen((s) => !s)} aria-pressed={sidebarOpen}>
+        <span className={`pp-pill ${connected ? "pp-pill-ok" : "pp-pill-warn"}`}>
+          {connected ? "live" : "reconnecting…"}
+        </span>
+        <button
+          type="button"
+          className="pp-button"
+          onClick={() => setSidebarOpen((s) => !s)}
+          aria-pressed={sidebarOpen}
+        >
           Feedback {openCount > 0 && <span className="pp-count">{openCount}</span>}
         </button>
       </header>
 
       {session.status === "awaiting-review" && (
-        <div className="pp-banner">The agent is waiting for your review. Click anything to comment, then press <strong>Send to agent</strong>.</div>
+        <div className="pp-banner">
+          The agent is waiting for your review. Click anything to comment, then press{" "}
+          <strong>Send to agent</strong>.
+        </div>
       )}
       {error && <div className="pp-banner pp-banner-err">{error}</div>}
 

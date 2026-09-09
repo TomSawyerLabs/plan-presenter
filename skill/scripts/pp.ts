@@ -19,7 +19,19 @@
 
 import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { api, ApiError, DEFAULT_PORT, hostUrl, lanUrl, loadConfig, parseArgv, parseDuration, ppHome, saveConfig, str } from "./_lib.ts";
+import {
+  api,
+  ApiError,
+  DEFAULT_PORT,
+  hostUrl,
+  lanUrl,
+  loadConfig,
+  parseArgv,
+  parseDuration,
+  ppHome,
+  saveConfig,
+  str,
+} from "./_lib.ts";
 
 interface SessionSummary {
   id: string;
@@ -49,7 +61,12 @@ function need(i: number, what: string): string {
 }
 
 function usage(): string {
-  return readFileSync(new URL(import.meta.url)).toString().split("\n").slice(2, 18).map((l) => l.replace(/^ \* ?/, "")).join("\n");
+  return readFileSync(new URL(import.meta.url))
+    .toString()
+    .split("\n")
+    .slice(2, 18)
+    .map((l) => l.replace(/^ \* ?/, ""))
+    .join("\n");
 }
 
 async function healthy(): Promise<boolean> {
@@ -67,31 +84,49 @@ async function serve(): Promise<void> {
   const bind = flags.lan ? "0.0.0.0" : (str(flags.bind) ?? cfg.bind ?? "127.0.0.1");
   if (await healthy()) {
     out(`host already running at ${hostUrl()}`);
-    if (flags.lan) out("note: --lan ignored because the host is already running; stop it and re-run to rebind");
+    if (flags.lan)
+      out("note: --lan ignored because the host is already running; stop it and re-run to rebind");
     return;
   }
   const repoDir = str(flags.repo) ?? cfg.repoDir;
   if (!repoDir || !existsSync(join(repoDir, "packages", "host", "src", "cli.ts"))) {
-    die(`plan-presenter repo not found (repoDir=${repoDir ?? "unset"}). Run the installer from the repo: bun run skill/scripts/install.ts`);
+    die(
+      `plan-presenter repo not found (repoDir=${repoDir ?? "unset"}). Run the installer from the repo: bun run skill/scripts/install.ts`,
+    );
   }
   mkdirSync(ppHome(), { recursive: true });
   const log = openSync(join(ppHome(), "host.log"), "a");
   const root = cfg.root ?? join(ppHome(), "sessions");
-  const proc = Bun.spawn(["bun", "run", join(repoDir, "packages", "host", "src", "cli.ts"), "--port", String(port), "--host", bind, "--root", root], {
-    cwd: repoDir,
-    stdout: log,
-    stderr: log,
-    stdin: "ignore",
-    detached: true,
-    env: { ...process.env, PP_UI_DIR: join(repoDir, "packages", "ui", "dist") },
-  });
+  const proc = Bun.spawn(
+    [
+      "bun",
+      "run",
+      join(repoDir, "packages", "host", "src", "cli.ts"),
+      "--port",
+      String(port),
+      "--host",
+      bind,
+      "--root",
+      root,
+    ],
+    {
+      cwd: repoDir,
+      stdout: log,
+      stderr: log,
+      stdin: "ignore",
+      detached: true,
+      env: { ...process.env, PP_UI_DIR: join(repoDir, "packages", "ui", "dist") },
+    },
+  );
   proc.unref();
   writeFileSync(join(ppHome(), "host.pid"), String(proc.pid));
   saveConfig({ ...cfg, repoDir, port, bind, root });
   for (let i = 0; i < 50; i++) {
     await Bun.sleep(100);
     if (await healthy()) {
-      out(`host started at http://127.0.0.1:${port} (pid ${proc.pid}, log ${join(ppHome(), "host.log")})`);
+      out(
+        `host started at http://127.0.0.1:${port} (pid ${proc.pid}, log ${join(ppHome(), "host.log")})`,
+      );
       if (bind === "0.0.0.0") {
         const lan = await lanUrl(port);
         if (lan) out(`LAN: ${lan}`);
@@ -111,12 +146,16 @@ function sessionUrl(id: string, pageId?: string): string {
 }
 
 function summarise(s: SessionSummary): string {
-  const pages = s.pageSummaries.map((p) => `  - ${p.id}  "${p.title}"${p.openFeedback ? `  (${p.openFeedback} open)` : ""}`).join("\n");
+  const pages = s.pageSummaries
+    .map((p) => `  - ${p.id}  "${p.title}"${p.openFeedback ? `  (${p.openFeedback} open)` : ""}`)
+    .join("\n");
   return [
     `session ${s.id}  "${s.title}"  status=${s.status}  open feedback=${s.openFeedback}`,
     `dir: ${s.dir}`,
     `url: ${sessionUrl(s.id)}`,
-    s.allowedRoots.length ? `allowed roots: ${s.allowedRoots.join(", ")}` : "allowed roots: (none: Folder links disabled)",
+    s.allowedRoots.length
+      ? `allowed roots: ${s.allowedRoots.join(", ")}`
+      : "allowed roots: (none: Folder links disabled)",
     pages ? `pages:\n${pages}` : "pages: (none yet: write pages/*.mdx)",
   ].join("\n");
 }
@@ -149,7 +188,11 @@ async function main(): Promise<void> {
         out(summarise(s));
       } else {
         const ok = await healthy();
-        out(ok ? `host OK at ${hostUrl()}` : `host NOT running (expected ${hostUrl()}). Run: pp serve`);
+        out(
+          ok
+            ? `host OK at ${hostUrl()}`
+            : `host NOT running (expected ${hostUrl()}). Run: pp serve`,
+        );
         if (!ok) process.exit(2);
       }
       return;
@@ -160,14 +203,19 @@ async function main(): Promise<void> {
       const list = await api<SessionSummary[]>("/api/sessions");
       if (flags.json) return out(JSON.stringify(list, null, 2));
       if (!list.length) return out("(no sessions)");
-      for (const s of list) out(`${s.id}  ${s.status.padEnd(15)}  open=${String(s.openFeedback).padEnd(3)}  ${s.title}`);
+      for (const s of list)
+        out(
+          `${s.id}  ${s.status.padEnd(15)}  open=${String(s.openFeedback).padEnd(3)}  ${s.title}`,
+        );
       return;
     }
 
     case "new": {
       await ensureHost();
       const title = need(1, "title");
-      const roots = ([] as string[]).concat(flags.root ? [String(flags.root)] : []).map((r) => resolve(r));
+      const roots = ([] as string[])
+        .concat(flags.root ? [String(flags.root)] : [])
+        .map((r) => resolve(r));
       // Default: allow the current working directory so folder links to the project work.
       if (!roots.length && !flags["no-root"]) roots.push(process.cwd());
       const body = { title, id: str(flags.id), allowedRoots: roots, meta: { cwd: process.cwd() } };
@@ -182,14 +230,35 @@ async function main(): Promise<void> {
         const now = new Date().toISOString();
         writeFileSync(
           join(abs, "session.json"),
-          JSON.stringify({ id, title, status: "drafting", createdAt: now, updatedAt: now, allowedRoots: roots, pages: [], meta: body.meta }, null, 2) + "\n",
+          JSON.stringify(
+            {
+              id,
+              title,
+              status: "drafting",
+              createdAt: now,
+              updatedAt: now,
+              allowedRoots: roots,
+              pages: [],
+              meta: body.meta,
+            },
+            null,
+            2,
+          ) + "\n",
         );
-        s = await api<SessionSummary>("/api/sessions/register", { method: "POST", body: JSON.stringify({ dir: abs }) });
+        s = await api<SessionSummary>("/api/sessions/register", {
+          method: "POST",
+          body: JSON.stringify({ dir: abs }),
+        });
       } else {
-        s = await api<SessionSummary>("/api/sessions", { method: "POST", body: JSON.stringify(body) });
+        s = await api<SessionSummary>("/api/sessions", {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
       }
       out(summarise(s));
-      out(`\nNext: write ${join(s.dir, "pages", "01-overview.mdx")} then run: pp review ${s.id} --open`);
+      out(
+        `\nNext: write ${join(s.dir, "pages", "01-overview.mdx")} then run: pp review ${s.id} --open`,
+      );
       return;
     }
 
@@ -199,7 +268,10 @@ async function main(): Promise<void> {
       const pageId = need(2, "pageId");
       const file = str(flags.file);
       const source = file ? readFileSync(file, "utf8") : await Bun.stdin.text();
-      await api(`/api/sessions/${encodeURIComponent(id)}/pages/${encodeURIComponent(pageId)}`, { method: "PUT", body: JSON.stringify({ source }) });
+      await api(`/api/sessions/${encodeURIComponent(id)}/pages/${encodeURIComponent(pageId)}`, {
+        method: "PUT",
+        body: JSON.stringify({ source }),
+      });
       out(`wrote page ${pageId}: ${sessionUrl(id, pageId)}`);
       return;
     }
@@ -216,7 +288,10 @@ async function main(): Promise<void> {
     case "review": {
       await ensureHost();
       const id = need(1, "session");
-      const s = await api<SessionSummary>(`/api/sessions/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ status: "awaiting-review" }) });
+      const s = await api<SessionSummary>(`/api/sessions/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "awaiting-review" }),
+      });
       if (flags.open) await openInBrowser(sessionUrl(id));
       out(`session ${id} is awaiting review: ${sessionUrl(id)}`);
       const lan = await lanUrl(Number(loadConfig().port ?? DEFAULT_PORT));
@@ -232,7 +307,9 @@ async function main(): Promise<void> {
       const any = !!flags.any;
       const deadline = Date.now() + total;
       const before = await api<SessionSummary>(`/api/sessions/${encodeURIComponent(id)}`);
-      process.stderr.write(`waiting for feedback on "${before.title}" (${sessionUrl(id)}) up to ${Math.round(total / 1000)}s…\n`);
+      process.stderr.write(
+        `waiting for feedback on "${before.title}" (${sessionUrl(id)}) up to ${Math.round(total / 1000)}s…\n`,
+      );
       while (Date.now() < deadline) {
         const slice = Math.min(25_000, deadline - Date.now());
         const r = await api<{ timedOut: boolean; event: { type: string; batch?: number } | null }>(
@@ -240,12 +317,17 @@ async function main(): Promise<void> {
           { timeoutMs: slice + 5_000 },
         );
         if (!r.timedOut && r.event) {
-          const q = r.event.type === "feedback.batch" && r.event.batch ? `?batch=${r.event.batch}&format=md` : "?format=md";
+          const q =
+            r.event.type === "feedback.batch" && r.event.batch
+              ? `?batch=${r.event.batch}&format=md`
+              : "?format=md";
           out(await api<string>(`/api/sessions/${encodeURIComponent(id)}/feedback${q}`));
           return;
         }
       }
-      process.stderr.write("timed out; re-run `pp wait` to keep waiting, or `pp feedback` to see what's there.\n");
+      process.stderr.write(
+        "timed out; re-run `pp wait` to keep waiting, or `pp feedback` to see what's there.\n",
+      );
       process.exit(3);
     }
 
@@ -267,10 +349,13 @@ async function main(): Promise<void> {
       const id = need(1, "session");
       const fid = need(2, "feedback id");
       const body = need(3, "text");
-      await api(`/api/sessions/${encodeURIComponent(id)}/feedback/${encodeURIComponent(fid)}/replies`, {
-        method: "POST",
-        body: JSON.stringify({ author: "agent", body }),
-      });
+      await api(
+        `/api/sessions/${encodeURIComponent(id)}/feedback/${encodeURIComponent(fid)}/replies`,
+        {
+          method: "POST",
+          body: JSON.stringify({ author: "agent", body }),
+        },
+      );
       out(`replied to ${fid}`);
       return;
     }
@@ -283,7 +368,10 @@ async function main(): Promise<void> {
       if (!ids.length) die("missing feedback id(s)");
       const status = cmd === "resolve" ? "resolved" : "acknowledged";
       for (const fid of ids) {
-        await api(`/api/sessions/${encodeURIComponent(id)}/feedback/${encodeURIComponent(fid)}`, { method: "PATCH", body: JSON.stringify({ status }) });
+        await api(`/api/sessions/${encodeURIComponent(id)}/feedback/${encodeURIComponent(fid)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status }),
+        });
         out(`${fid} -> ${status}`);
       }
       return;
@@ -292,7 +380,10 @@ async function main(): Promise<void> {
     case "close": {
       await ensureHost();
       const id = need(1, "session");
-      await api(`/api/sessions/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ status: "closed" }) });
+      await api(`/api/sessions/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "closed" }),
+      });
       out(`closed ${id}`);
       return;
     }

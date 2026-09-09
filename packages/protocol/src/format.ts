@@ -22,7 +22,11 @@ const KIND_VERB: Record<Feedback["kind"], string> = {
   answer: "ANSWER",
 };
 
-export function formatFeedbackMarkdown(session: SessionSummary, items: Feedback[], opts: FormatOptions = {}): string {
+export function formatFeedbackMarkdown(
+  session: SessionSummary,
+  items: Feedback[],
+  opts: FormatOptions = {},
+): string {
   const lines: string[] = [];
   const heading = opts.heading ?? `Feedback for "${session.title}" (session ${session.id})`;
   lines.push(`# ${heading}`, "");
@@ -46,7 +50,9 @@ export function formatFeedbackMarkdown(session: SessionSummary, items: Feedback[
     const rel = `pages/${pageId}.mdx`;
     const path = opts.sessionDir ? joinPath(opts.sessionDir, rel) : rel;
     lines.push(`## Page "${title}" (${path})`, "");
-    for (const f of list.sort((a, b) => (a.anchor.block?.line.start ?? Infinity) - (b.anchor.block?.line.start ?? Infinity))) {
+    for (const f of list.sort(
+      (a, b) => (a.anchor.block?.line.start ?? Infinity) - (b.anchor.block?.line.start ?? Infinity),
+    )) {
       const where = f.anchor.block
         ? `lines ${f.anchor.block.line.start}${f.anchor.block.line.end !== f.anchor.block.line.start ? `-${f.anchor.block.line.end}` : ""} (${f.anchor.block.type})`
         : f.anchor.targetId
@@ -71,7 +77,7 @@ export function formatFeedbackMarkdown(session: SessionSummary, items: Feedback[
   }
   lines.push(
     "---",
-    "To respond: `pp reply <session> <id> \"...\"`, `pp resolve <session> <id>`; edit the .mdx files in place (the UI live-reloads); then `pp review <session>` and `pp wait <session>` for the next round.",
+    'To respond: `pp reply <session> <id> "..."`, `pp resolve <session> <id>`; edit the .mdx files in place (the UI live-reloads); then `pp review <session>` and `pp wait <session>` for the next round.',
     "",
   );
   return lines.join("\n");

@@ -68,7 +68,7 @@ export class HttpTransport implements Transport {
   private async req<T>(path: string, init?: RequestInit): Promise<T> {
     const res = await fetch(`${this.base}${path}`, {
       ...init,
-      headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
+      headers: { "content-type": "application/json", ...init?.headers },
     });
     if (!res.ok) {
       let msg = `${res.status} ${res.statusText}`;
@@ -90,7 +90,10 @@ export class HttpTransport implements Transport {
     return this.req<SessionSummary>(`/api/sessions/${enc(id)}`);
   }
   updateSession(id: string, patch: UpdateSession) {
-    return this.req<SessionSummary>(`/api/sessions/${enc(id)}`, { method: "PATCH", body: JSON.stringify(patch) });
+    return this.req<SessionSummary>(`/api/sessions/${enc(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
   }
   getPage(id: string, pageId: string) {
     return this.req<CompiledPage>(`/api/sessions/${enc(id)}/pages/${enc(pageId)}`);
@@ -100,7 +103,10 @@ export class HttpTransport implements Transport {
     return this.req<Feedback[]>(`/api/sessions/${enc(id)}/feedback${q}`);
   }
   createFeedback(id: string, input: CreateFeedback) {
-    return this.req<Feedback>(`/api/sessions/${enc(id)}/feedback`, { method: "POST", body: JSON.stringify(input) });
+    return this.req<Feedback>(`/api/sessions/${enc(id)}/feedback`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
   }
   updateFeedback(id: string, feedbackId: string, patch: UpdateFeedback) {
     return this.req<Feedback>(`/api/sessions/${enc(id)}/feedback/${enc(feedbackId)}`, {
@@ -118,7 +124,9 @@ export class HttpTransport implements Transport {
     });
   }
   send(id: string) {
-    return this.req<{ batch: number; items: Feedback[] }>(`/api/sessions/${enc(id)}/send`, { method: "POST" });
+    return this.req<{ batch: number; items: Feedback[] }>(`/api/sessions/${enc(id)}/send`, {
+      method: "POST",
+    });
   }
   openPath(id: string, path: string) {
     return this.req<{ action: string; path: string }>("/api/open", {

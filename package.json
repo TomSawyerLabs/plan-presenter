@@ -1,28 +1,36 @@
 {
   "name": "plan-presenter",
-  "private": true,
   "version": "0.0.0",
+  "private": true,
   "description": "Agents present rich plans/data to a human; the human clicks anywhere to leave inline feedback that flows back to the agent.",
-  "type": "module",
   "workspaces": [
     "packages/*",
     "apps/*",
-    "apps/*",
     "skill"
   ],
+  "type": "module",
   "scripts": {
     "dev": "bun --filter=@plan-presenter/host run dev",
     "dev:ui": "bun --filter=@plan-presenter/ui run dev",
     "build": "bun --filter=@plan-presenter/ui run build",
+    "build:desktop": "bun --filter=@plan-presenter/desktop run build",
     "typecheck": "bun --filter='*' run typecheck",
     "test": "bun test",
+    "lint": "oxlint",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
+    "check": "bun run format:check && bun run lint && bun run typecheck && bun run test",
+    "prepare": "lefthook install",
     "pp": "bun run skill/scripts/pp.ts"
-  },
-  "engines": {
-    "bun": ">=1.3.0"
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "lefthook": "^2.1.12",
+    "oxfmt": "^0.67.0",
+    "oxlint": "^1.82.0",
     "typescript": "^5.9.0"
+  },
+  "engines": {
+    "bun": ">=1.3.0"
   }
 }

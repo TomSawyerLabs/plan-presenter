@@ -36,7 +36,12 @@ describe("formatFeedbackMarkdown", () => {
         anchor: {
           pageId: "01-overview",
           blockId: "p-1",
-          block: { id: "p-1", type: "paragraph", line: { start: 8, end: 10 }, excerpt: "The current pipeline" },
+          block: {
+            id: "p-1",
+            type: "paragraph",
+            line: { start: 8, end: 10 },
+            excerpt: "The current pipeline",
+          },
           selection: "spikes cascade",
           targetId: null,
         },
@@ -48,7 +53,13 @@ describe("formatFeedbackMarkdown", () => {
         kind: "answer",
         body: "NATS",
         data: { selected: ["NATS"], text: "" },
-        anchor: { pageId: "01-overview", blockId: null, block: null, selection: null, targetId: "queue" },
+        anchor: {
+          pageId: "01-overview",
+          blockId: null,
+          block: null,
+          selection: null,
+          targetId: "queue",
+        },
       },
     ];
     const md = formatFeedbackMarkdown(session, items, { sessionDir: session.dir });

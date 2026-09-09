@@ -18,7 +18,10 @@ interface Route {
 
 function parseHash(): Route {
   const m = /^#\/s\/([^/]+)(?:\/([^/]+))?/.exec(location.hash);
-  return { sessionId: m?.[1] ? decodeURIComponent(m[1]) : null, pageId: m?.[2] ? decodeURIComponent(m[2]) : null };
+  return {
+    sessionId: m?.[1] ? decodeURIComponent(m[1]) : null,
+    pageId: m?.[2] ? decodeURIComponent(m[2]) : null,
+  };
 }
 
 export function App({ transport }: { transport: Transport }) {
@@ -31,7 +34,9 @@ export function App({ transport }: { transport: Transport }) {
   }, []);
 
   const go = useCallback((sessionId: string | null, pageId?: string | null) => {
-    location.hash = sessionId ? `#/s/${encodeURIComponent(sessionId)}${pageId ? `/${encodeURIComponent(pageId)}` : ""}` : "#/";
+    location.hash = sessionId
+      ? `#/s/${encodeURIComponent(sessionId)}${pageId ? `/${encodeURIComponent(pageId)}` : ""}`
+      : "#/";
   }, []);
 
   if (!route.sessionId) return <SessionList transport={transport} onOpen={(id) => go(id)} />;

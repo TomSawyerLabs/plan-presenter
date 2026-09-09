@@ -3,7 +3,13 @@
  * session-relative media URLs and local-path links.
  */
 
-import type { AnchorHTMLAttributes, ImgHTMLAttributes, MediaHTMLAttributes, ReactNode, SourceHTMLAttributes } from "react";
+import type {
+  AnchorHTMLAttributes,
+  ImgHTMLAttributes,
+  MediaHTMLAttributes,
+  ReactNode,
+  SourceHTMLAttributes,
+} from "react";
 import { useSessionOptional } from "../../state.tsx";
 import { hrefToPath, isLocalPathHref } from "./Folder.tsx";
 import { Mermaid } from "./Mermaid.tsx";
@@ -11,7 +17,9 @@ import { Mermaid } from "./Mermaid.tsx";
 type DataAttrs = { [attr: `data-${string}`]: string | undefined };
 
 function pickData(props: object): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(props as Record<string, unknown>).filter(([k]) => k.startsWith("data-")));
+  return Object.fromEntries(
+    Object.entries(props as Record<string, unknown>).filter(([k]) => k.startsWith("data-")),
+  );
 }
 
 /** Resolve a relative URL against the session's file endpoint. */
@@ -59,7 +67,9 @@ export function Anchor(props: AnchorHTMLAttributes<HTMLAnchorElement>) {
         data-pp-interactive=""
         onClick={(e) => {
           e.preventDefault();
-          session?.openPath(path).catch((err) => alert(`Could not open ${path}: ${(err as Error).message}`));
+          session
+            ?.openPath(path)
+            .catch((err) => alert(`Could not open ${path}: ${(err as Error).message}`));
         }}
       >
         {props.children}
@@ -115,7 +125,8 @@ export function Callout(props: CalloutProps) {
   return (
     <aside className={`pp-callout pp-callout-${kind}`} {...pickData(props)}>
       <div className="pp-callout-title">
-        <span aria-hidden="true">{CALLOUT_ICON[kind]}</span> {title ?? kind[0]!.toUpperCase() + kind.slice(1)}
+        <span aria-hidden="true">{CALLOUT_ICON[kind]}</span>{" "}
+        {title ?? kind[0]!.toUpperCase() + kind.slice(1)}
       </div>
       <div className="pp-callout-body">{children}</div>
     </aside>
@@ -139,7 +150,11 @@ export function Section(props: SectionProps) {
 
 export function Columns(props: { children?: ReactNode; min?: string } & DataAttrs) {
   return (
-    <div className="pp-columns" style={{ ["--pp-col-min" as string]: props.min ?? "18rem" }} {...pickData(props)}>
+    <div
+      className="pp-columns"
+      style={{ ["--pp-col-min" as string]: props.min ?? "18rem" }}
+      {...pickData(props)}
+    >
       {props.children}
     </div>
   );
@@ -164,8 +179,16 @@ export interface FigureProps extends DataAttrs {
 export function Figure(props: FigureProps) {
   const resolve = useResolveUrl();
   return (
-    <figure className="pp-figure" style={props.width ? { maxWidth: props.width } : undefined} {...pickData(props)}>
-      {props.src ? <img src={resolve(props.src)} alt={props.alt ?? ""} loading="lazy" /> : props.children}
+    <figure
+      className="pp-figure"
+      style={props.width ? { maxWidth: props.width } : undefined}
+      {...pickData(props)}
+    >
+      {props.src ? (
+        <img src={resolve(props.src)} alt={props.alt ?? ""} loading="lazy" />
+      ) : (
+        props.children
+      )}
       {props.caption && <figcaption>{props.caption}</figcaption>}
     </figure>
   );

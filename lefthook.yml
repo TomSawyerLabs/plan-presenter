@@ -1,0 +1,10 @@
+# Pre-commit checks are fast and local; CI runs the full suite.
+pre-commit:
+  parallel: true
+  jobs:
+    - name: format check
+      glob: "*.{ts,tsx,js,jsx,mjs,css,json,jsonc,md,yaml,yml}"
+      run: bunx oxfmt --check {staged_files}
+    - name: lint
+      glob: "*.{ts,tsx,js,jsx,mjs}"
+      run: bunx oxlint {staged_files}

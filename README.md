@@ -15,15 +15,15 @@ agent ◀── pp wait ──────────────────�
 
 ## Layout
 
-| Path | What |
-|---|---|
-| `packages/protocol` | Zod schemas and types shared by everything: session manifest, compiled pages, block anchors, feedback, live events; the agent-facing Markdown formatter. |
-| `packages/host` | Bun host: compiles MDX with per-block anchors (stable ids + source lines), watches session dirs, stores feedback as JSON in the session dir, serves the UI, REST + WebSocket, safe "open folder". Framework-agnostic core plus a Hono adapter. |
-| `packages/ui` | React UI (Vite). Click-anywhere feedback, selection quoting, gutter markers, feedback sidebar, live reload. Exported as an embeddable `<PlanPresenter>` with a pluggable `Transport`. |
-| `apps/desktop` | Thin Electrobun shell: runs the host in-process and opens a native window. |
-| `skill/` | Installable agent skill: `SKILL.md`, the dependency-free `pp` CLI, an authoring reference. |
-| `examples/demo` | A sample session (register it to try the UI). |
-| `plans/` | Living design/progress doc. |
+| Path                | What                                                                                                                                                                                                                                           |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/protocol` | Zod schemas and types shared by everything: session manifest, compiled pages, block anchors, feedback, live events; the agent-facing Markdown formatter.                                                                                       |
+| `packages/host`     | Bun host: compiles MDX with per-block anchors (stable ids + source lines), watches session dirs, stores feedback as JSON in the session dir, serves the UI, REST + WebSocket, safe "open folder". Framework-agnostic core plus a Hono adapter. |
+| `packages/ui`       | React UI (Vite). Click-anywhere feedback, selection quoting, gutter markers, feedback sidebar, live reload. Exported as an embeddable `<PlanPresenter>` with a pluggable `Transport`.                                                          |
+| `apps/desktop`      | Thin Electrobun shell: runs the host in-process and opens a native window.                                                                                                                                                                     |
+| `skill/`            | Installable agent skill: `SKILL.md`, the dependency-free `pp` CLI, an authoring reference.                                                                                                                                                     |
+| `examples/demo`     | A sample session (register it to try the UI).                                                                                                                                                                                                  |
+| `plans/`            | Living design/progress doc.                                                                                                                                                                                                                    |
 
 ## Quick start
 
@@ -88,7 +88,7 @@ Sessions live under `~/.plan-presenter/sessions/<id>` by default, or anywhere
 ## Components available in pages
 
 `<Chart>` (uPlot; line/bars/points; inline or JSON-file data), Mermaid via
-```` ```mermaid ```` fences or `<Mermaid>`, `<Question>` (single/multi choice
+` ```mermaid ` fences or `<Mermaid>`, `<Question>` (single/multi choice
 and free text; answers arrive as feedback), `<Folder path>` and
 `[text](file:///…)` (opens the OS file manager on the host machine, only inside
 the session's allowed roots; never executes anything), `<Callout>`, `<Section>`,
@@ -112,7 +112,7 @@ exactly that batch.
   behind HTTPS.
 - The only host-side side effect the UI can trigger is "open in file manager",
   restricted to absolute paths inside the session's `allowedRoots`, resolved
-  through symlinks, spawned without a shell, and files are only *revealed*.
+  through symlinks, spawned without a shell, and files are only _revealed_.
 - MDX is agent-authored JavaScript that runs in the viewer's browser; treat
   sessions as trusted content from your own agent.
 

@@ -136,7 +136,8 @@ export class SessionStore {
 
   async createSession(input: CreateSession, opts: { dir?: string } = {}): Promise<SessionManifest> {
     const id = input.id ?? newId("s").replace("_", "-");
-    if (existsSync(join(this.sessionDir(id), "session.json"))) throw new Conflict(`session ${id} exists`);
+    if (existsSync(join(this.sessionDir(id), "session.json")))
+      throw new Conflict(`session ${id} exists`);
     if (opts.dir) {
       this.registry.external[id] = resolve(opts.dir);
       await this.saveRegistry();
@@ -177,7 +178,9 @@ export class SessionStore {
       ...m,
       ...(patch.title !== undefined && { title: patch.title }),
       ...(patch.status !== undefined && { status: patch.status }),
-      ...(patch.allowedRoots !== undefined && { allowedRoots: patch.allowedRoots.map((r) => resolve(r)) }),
+      ...(patch.allowedRoots !== undefined && {
+        allowedRoots: patch.allowedRoots.map((r) => resolve(r)),
+      }),
       ...(patch.pages !== undefined && { pages: patch.pages }),
       ...(patch.meta !== undefined && { meta: { ...m.meta, ...patch.meta } }),
       updatedAt: now(),
@@ -196,7 +199,7 @@ export class SessionStore {
     } else {
       await rm(dir, { recursive: true, force: true });
     }
-    for (const key of [...this.compiled.keys()]) if (key.startsWith(`${id}/`)) this.compiled.delete(key);
+    for (const key of this.compiled.keys()) if (key.startsWith(`${id}/`)) this.compiled.delete(key);
   }
 
   async summary(id: string): Promise<SessionSummary> {
@@ -232,7 +235,10 @@ export class SessionStore {
     const pinned = m.pages.filter((p) => ids.includes(p));
     const rest = ids.filter((p) => !pinned.includes(p));
     const withOrder = await Promise.all(
-      rest.map(async (pid) => ({ pid, order: (await this.getPage(id, pid)).frontmatter.order ?? Infinity })),
+      rest.map(async (pid) => ({
+        pid,
+        order: (await this.getPage(id, pid)).frontmatter.order ?? Infinity,
+      })),
     );
     withOrder.sort((a, b) => a.order - b.order || a.pid.localeCompare(b.pid));
     return [...pinned, ...withOrder.map((w) => w.pid)];
@@ -307,11 +313,13 @@ export class SessionStore {
   async readFeedbackFile(id: string): Promise<FeedbackFile> {
     const p = this.feedbackPath(id);
     if (!existsSync(p)) {
-      if (!existsSync(join(this.sessionDir(id), "session.json"))) throw new NotFound(`session ${id}`);
+      if (!existsSync(join(this.sessionDir(id), "session.json")))
+        throw new NotFound(`session ${id}`);
       return { version: 1, lastBatch: 0, items: [] };
     }
     const parsed = FeedbackFile.safeParse(JSON.parse(await readFile(p, "utf8")));
-    if (!parsed.success) throw new Error(`invalid feedback.json for ${id}: ${parsed.error.message}`);
+    if (!parsed.success)
+      throw new Error(`invalid feedback.json for ${id}: ${parsed.error.message}`);
     return parsed.data;
   }
 
@@ -319,7 +327,10 @@ export class SessionStore {
     await writeJsonAtomic(this.feedbackPath(id), file);
   }
 
-  async listFeedback(id: string, filter: { pageId?: string; status?: string; batch?: number; since?: number } = {}): Promise<Feedback[]> {
+  async listFeedback(
+    id: string,
+    filter: { pageId?: string; status?: string; batch?: number; since?: number } = {},
+  ): Promise<Feedback[]> {
     const file = await this.readFeedbackFile(id);
     return file.items.filter(
       (f) =>
@@ -374,7 +385,12 @@ export class SessionStore {
     await this.writeFeedbackFile(id, file);
   }
 
-  async addReply(id: string, feedbackId: string, author: "human" | "agent", body: string): Promise<Feedback> {
+  async addReply(
+    id: string,
+    feedbackId: string,
+    author: "human" | "agent",
+    body: string,
+  ): Promise<Feedback> {
     const file = await this.readFeedbackFile(id);
     const item = file.items.find((f) => f.id === feedbackId);
     if (!item) throw new NotFound(`feedback ${feedbackId}`);
@@ -413,8 +429,10 @@ export class SessionStore {
 }
 
 export function titleFromId(pageId: string): string {
-  return basename(pageId)
-    .replace(/^\d+[-_.]?/, "")
-    .replace(/[-_]+/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase()) || pageId;
+  return (
+    basename(pageId)
+      .replace(/^\d+[-_.]?/, "")
+      .replace(/[-_]+/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase()) || pageId
+  );
 }

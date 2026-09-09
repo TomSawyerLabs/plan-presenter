@@ -48,9 +48,16 @@ if (await hostIsUp()) {
   console.log(`plan-presenter: using existing host at ${url}`);
 } else {
   const uiDir = findUiDir();
-  if (!uiDir) console.warn("plan-presenter: built UI not found; run `bun run build` at the repo root");
+  if (!uiDir)
+    console.warn("plan-presenter: built UI not found; run `bun run build` at the repo root");
   const host = await createHost({ root, uiDir });
-  const server = Bun.serve({ port, hostname: bind, fetch: host.app.fetch, websocket: host.websocket, idleTimeout: 255 });
+  const server = Bun.serve({
+    port,
+    hostname: bind,
+    fetch: host.app.fetch,
+    websocket: host.websocket,
+    idleTimeout: 255,
+  });
   stop = async () => {
     await host.stop();
     server.stop(true);

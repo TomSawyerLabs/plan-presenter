@@ -66,7 +66,10 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T>(path: string, init: RequestInit & { timeoutMs?: number } = {}): Promise<T> {
+export async function api<T>(
+  path: string,
+  init: RequestInit & { timeoutMs?: number } = {},
+): Promise<T> {
   const url = `${hostUrl()}${path}`;
   const ctl = new AbortController();
   const timer = init.timeoutMs ? setTimeout(() => ctl.abort(), init.timeoutMs) : null;
@@ -75,10 +78,13 @@ export async function api<T>(path: string, init: RequestInit & { timeoutMs?: num
     res = await fetch(url, {
       ...init,
       signal: ctl.signal,
-      headers: { "content-type": "application/json", ...(init.headers ?? {}) },
+      headers: { "content-type": "application/json", ...init.headers },
     });
   } catch (e) {
-    throw new ApiError(`cannot reach plan-presenter host at ${hostUrl()} (${(e as Error).message}). Run: pp serve`, 0);
+    throw new ApiError(
+      `cannot reach plan-presenter host at ${hostUrl()} (${(e as Error).message}). Run: pp serve`,
+      0,
+    );
   } finally {
     if (timer) clearTimeout(timer);
   }
@@ -119,7 +125,10 @@ export function parseDuration(s: string | undefined, fallbackMs: number): number
 }
 
 /** Minimal argv parser: flags (--x, --x=v, --x v, -x), positionals. */
-export function parseArgv(argv: string[]): { _: string[]; flags: Record<string, string | boolean> } {
+export function parseArgv(argv: string[]): {
+  _: string[];
+  flags: Record<string, string | boolean>;
+} {
   const _: string[] = [];
   const flags: Record<string, string | boolean> = {};
   for (let i = 0; i < argv.length; i++) {

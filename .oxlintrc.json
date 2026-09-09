@@ -1,0 +1,19 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "react", "unicorn", "oxc"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn"
+  },
+  "rules": {
+    "no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
+    "react/react-in-jsx-scope": "off",
+    "unicorn/no-null": "off",
+    "unicorn/no-array-sort": "off",
+    "unicorn/consistent-function-scoping": "off",
+    "unicorn/prefer-add-event-listener": "off",
+    "no-underscore-dangle": "off",
+    "no-shadow": "off"
+  },
+  "ignorePatterns": ["node_modules", "dist", "build", "artifacts", "apps/desktop/types"]
+}

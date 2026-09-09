@@ -27,9 +27,18 @@ interface AnswerData {
 }
 
 export function Question(props: QuestionProps) {
-  const { id, options = [], multiple = false, text = options.length === 0, placeholder, children } = props;
+  const {
+    id,
+    options = [],
+    multiple = false,
+    text = options.length === 0,
+    placeholder,
+    children,
+  } = props;
   const session = useSessionOptional();
-  const dataAttrs = Object.fromEntries(Object.entries(props).filter(([k]) => k.startsWith("data-")));
+  const dataAttrs = Object.fromEntries(
+    Object.entries(props).filter(([k]) => k.startsWith("data-")),
+  );
 
   const existing = useMemo(
     () =>
@@ -47,7 +56,9 @@ export function Question(props: QuestionProps) {
   const [editing, setEditing] = useState(!existing);
 
   const toggle = (opt: string) => {
-    setSelected((prev) => (multiple ? (prev.includes(opt) ? prev.filter((o) => o !== opt) : [...prev, opt]) : [opt]));
+    setSelected((prev) =>
+      multiple ? (prev.includes(opt) ? prev.filter((o) => o !== opt) : [...prev, opt]) : [opt],
+    );
   };
 
   const submit = async () => {
@@ -55,7 +66,9 @@ export function Question(props: QuestionProps) {
     setBusy(true);
     try {
       const data: AnswerData = { selected, text: free };
-      const body = [selected.length ? selected.join(", ") : null, free.trim() || null].filter(Boolean).join(" - ");
+      const body = [selected.length ? selected.join(", ") : null, free.trim() || null]
+        .filter(Boolean)
+        .join(" - ");
       if (existing && existing.batch === null) {
         await session.updateFeedback(existing.id, { body });
         // data isn't patchable through UpdateFeedback; recreate for a clean record
@@ -85,7 +98,12 @@ export function Question(props: QuestionProps) {
   const answered = existing && !editing;
 
   return (
-    <div className={`pp-question${answered ? " pp-question-answered" : ""}`} data-pp-interactive="" data-pp-target={id} {...dataAttrs}>
+    <div
+      className={`pp-question${answered ? " pp-question-answered" : ""}`}
+      data-pp-interactive=""
+      data-pp-target={id}
+      {...dataAttrs}
+    >
       <div className="pp-question-prompt">
         <span className="pp-question-badge">Question</span> {children}
       </div>

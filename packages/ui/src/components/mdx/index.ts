@@ -1,5 +1,18 @@
 import type { MDXComponents } from "mdx/types";
-import { Anchor, Audio, Callout, Column, Columns, Figure, Img, Pre, Section, Source, Stat, Video } from "./Basics.tsx";
+import {
+  Anchor,
+  Audio,
+  Callout,
+  Column,
+  Columns,
+  Figure,
+  Img,
+  Pre,
+  Section,
+  Source,
+  Stat,
+  Video,
+} from "./Basics.tsx";
 import { Chart } from "./Chart.tsx";
 import { Folder } from "./Folder.tsx";
 import { Mermaid } from "./Mermaid.tsx";
@@ -33,4 +46,21 @@ export const mdxComponents: MDXComponents = {
   Image: Img,
 };
 
-export { Anchor, Audio, Callout, Chart, Column, Columns, Figure, Folder, Img, Mermaid, Pre, Question, Section, Source, Stat, Video };
+export {
+  Anchor,
+  Audio,
+  Callout,
+  Chart,
+  Column,
+  Columns,
+  Figure,
+  Folder,
+  Img,
+  Mermaid,
+  Pre,
+  Question,
+  Section,
+  Source,
+  Stat,
+  Video,
+};

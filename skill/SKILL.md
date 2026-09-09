@@ -32,7 +32,7 @@ is `.claude/skills/plan-presenter/scripts/pp.ts`.)
    [reference/authoring.md](reference/authoring.md) for the component set.
    Put images/data under `<session dir>/assets/` and reference them relatively.
 4. **Ask for review**: `$PP review <id> --open` marks the session
-   *awaiting-review* and opens the browser on the host machine. Tell the human
+   _awaiting-review_ and opens the browser on the host machine. Tell the human
    the URL as well.
 5. **Wait**: `$PP wait <id>` blocks (up to 9 minutes, re-run to keep waiting)
    until the human presses **Send to agent**, then prints their feedback as
@@ -48,14 +48,14 @@ Keep turns short: present, wait, act. Do not poll `pp feedback` in a loop;
 
 ## Feedback kinds you will receive
 
-| kind | meaning | what to do |
-|---|---|---|
-| `COMMENT` | a remark | acknowledge or fold into the plan |
-| `CHANGE REQUESTED` | edit this block | edit the source lines, reply with what changed, resolve |
-| `QUESTION` | explain/clarify | reply inline (`pp reply`) and/or expand the page |
-| `FOLLOW-UP REQUEST` | do extra work | do it (possibly a new page), reply, resolve |
-| `APPROVED` / `REJECTED` | sign-off per block | respect it; rejected blocks need a new approach |
-| `ANSWER` | reply to a `<Question>` you posed | read `Selected:` / `Text:` and proceed |
+| kind                    | meaning                           | what to do                                              |
+| ----------------------- | --------------------------------- | ------------------------------------------------------- |
+| `COMMENT`               | a remark                          | acknowledge or fold into the plan                       |
+| `CHANGE REQUESTED`      | edit this block                   | edit the source lines, reply with what changed, resolve |
+| `QUESTION`              | explain/clarify                   | reply inline (`pp reply`) and/or expand the page        |
+| `FOLLOW-UP REQUEST`     | do extra work                     | do it (possibly a new page), reply, resolve             |
+| `APPROVED` / `REJECTED` | sign-off per block                | respect it; rejected blocks need a new approach         |
+| `ANSWER`                | reply to a `<Question>` you posed | read `Selected:` / `Text:` and proceed                  |
 
 Each item carries `id`, the page file path, `lines a-b`, the block type and a
 text excerpt, and `Selected text` when the human highlighted a phrase. Use the
@@ -66,8 +66,12 @@ line range to find the block; the excerpt to double-check.
 Inside a page:
 
 ```mdx
-<Question id="db" options={["Postgres", "SQLite"]}>Which store for v1?</Question>
-<Question id="risk" options={["Yes", "No", "Not sure"]} multiple text>Any risks I missed?</Question>
+<Question id="db" options={["Postgres", "SQLite"]}>
+  Which store for v1?
+</Question>
+<Question id="risk" options={["Yes", "No", "Not sure"]} multiple text>
+  Any risks I missed?
+</Question>
 ```
 
 Answers arrive as `ANSWER · target #db` items in `pp wait` output.

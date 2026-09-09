@@ -24,7 +24,7 @@ export class SessionWatcher {
   start(): void {
     this.watcher = watch(this.store.watchRoots(), {
       ignoreInitial: true,
-      ignored: (p) => /(^|[\\/])(node_modules|\.git)([\\/]|$)/.test(p) || /\.tmp$/.test(p),
+      ignored: (p) => /(^|[\\/])(node_modules|\.git)([\\/]|$)/.test(p) || p.endsWith(".tmp"),
       awaitWriteFinish: { stabilityThreshold: 60, pollInterval: 20 },
     });
     this.watcher.on("all", (kind, path) => this.schedule(kind, path));
@@ -62,7 +62,11 @@ export class SessionWatcher {
     const name = basename(path);
 
     if (rel === "session.json") {
-      this.emit(kind === "unlink" ? { type: "session.removed", sessionId } : { type: "session.changed", sessionId });
+      this.emit(
+        kind === "unlink"
+          ? { type: "session.removed", sessionId }
+          : { type: "session.changed", sessionId },
+      );
       return;
     }
     if (rel === "feedback.json") {

@@ -30,7 +30,16 @@ describe("compilePage", () => {
     expect(r.error).toBeNull();
     expect(r.frontmatter).toEqual({ title: "Smoke", order: 2 });
     const types = r.blocks.map((b) => b.type);
-    expect(types).toEqual(["heading", "paragraph", "list", "listItem", "listItem", "code", "mdxJsxFlowElement", "table"]);
+    expect(types).toEqual([
+      "heading",
+      "paragraph",
+      "list",
+      "listItem",
+      "listItem",
+      "code",
+      "mdxJsxFlowElement",
+      "table",
+    ]);
     const heading = r.blocks[0]!;
     expect(heading.line).toEqual({ start: 6, end: 6 });
     expect(heading.excerpt).toBe("Hello");

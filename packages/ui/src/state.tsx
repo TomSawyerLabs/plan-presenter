@@ -68,7 +68,14 @@ export interface SessionProviderProps {
   children: ReactNode;
 }
 
-export function SessionProvider({ transport, sessionId, pageId, onPageChange, onError, children }: SessionProviderProps) {
+export function SessionProvider({
+  transport,
+  sessionId,
+  pageId,
+  onPageChange,
+  onError,
+  children,
+}: SessionProviderProps) {
   const [connected, setConnected] = useState(false);
   const [session, setSession] = useState<SessionSummary | null>(null);
   const [pages, setPages] = useState<Map<string, CompiledPage>>(new Map());
@@ -80,7 +87,10 @@ export function SessionProvider({ transport, sessionId, pageId, onPageChange, on
   const pageIdRef = useRef<string | null>(null);
 
   const currentPageId = pageId !== undefined ? pageId : uncontrolledPage;
-  pageIdRef.current = currentPageId;
+  // Async loaders read the latest page id without re-subscribing.
+  useEffect(() => {
+    pageIdRef.current = currentPageId;
+  }, [currentPageId]);
 
   const setCurrentPage = useCallback(
     (id: string) => {
@@ -131,7 +141,8 @@ export function SessionProvider({ transport, sessionId, pageId, onPageChange, on
         for (const id of ids) if (prev.has(id)) next.set(id, prev.get(id));
         return next;
       });
-      const wanted = pageIdRef.current && ids.includes(pageIdRef.current) ? pageIdRef.current : ids[0] ?? null;
+      const wanted =
+        pageIdRef.current && ids.includes(pageIdRef.current) ? pageIdRef.current : (ids[0] ?? null);
       if (wanted) {
         if (wanted !== pageIdRef.current) setCurrentPage(wanted);
         await loadPage(wanted);
@@ -144,23 +155,35 @@ export function SessionProvider({ transport, sessionId, pageId, onPageChange, on
     }
   }, [loadSession, loadFeedback, loadPage, setCurrentPage, fail]);
 
-  // Initial load + reload when the session id changes.
+  // Initial load. Callers key the provider by session id, so a new session
+  // mounts a fresh provider with fresh state.
   useEffect(() => {
-    setLoading(true);
-    setPages(new Map());
-    setFeedback([]);
+    // Network fetch; state is set after the await, not synchronously.
+    // oxlint-disable-next-line react/set-state-in-effect
     void refresh();
   }, [refresh]);
 
   // Load a page when it becomes current and isn't cached.
   useEffect(() => {
-    if (currentPageId && !pages.has(currentPageId) && session?.pageSummaries.some((p) => p.id === currentPageId)) {
+    if (
+      currentPageId &&
+      !pages.has(currentPageId) &&
+      session?.pageSummaries.some((p) => p.id === currentPageId)
+    ) {
+      // Network fetch; state is set after the await, not synchronously.
+      // oxlint-disable-next-line react/set-state-in-effect
       loadPage(currentPageId).catch(fail);
     }
   }, [currentPageId, pages, session, loadPage, fail]);
 
   // Live events.
-  useEffect(() => transport.onStatus(setConnected), [transport]);
+  useEffect(
+    () =>
+      transport.onStatus((c) => {
+        setConnected(c);
+      }),
+    [transport],
+  );
   useEffect(() => {
     let wasConnected = false;
     const offStatus = transport.onStatus((c) => {
@@ -180,11 +203,12 @@ export function SessionProvider({ transport, sessionId, pageId, onPageChange, on
         case "page.changed":
           loadSession().catch(fail);
           if (pageIdRef.current === e.pageId) loadPage(e.pageId).catch(fail);
-          else setPages((prev) => {
-            const next = new Map(prev);
-            next.delete(e.pageId);
-            return next;
-          });
+          else
+            setPages((prev) => {
+              const next = new Map(prev);
+              next.delete(e.pageId);
+              return next;
+            });
           break;
         case "page.removed":
           setPages((prev) => {
@@ -217,7 +241,7 @@ export function SessionProvider({ transport, sessionId, pageId, onPageChange, on
       session,
       pages,
       currentPageId,
-      page: currentPageId ? pages.get(currentPageId) ?? null : null,
+      page: currentPageId ? (pages.get(currentPageId) ?? null) : null,
       feedback,
       loading,
       error,
@@ -253,7 +277,22 @@ export function SessionProvider({ transport, sessionId, pageId, onPageChange, on
       },
       refresh,
     }),
-    [transport, connected, session, pages, currentPageId, feedback, loading, error, assetVersion, setCurrentPage, sessionId, loadFeedback, loadSession, refresh],
+    [
+      transport,
+      connected,
+      session,
+      pages,
+      currentPageId,
+      feedback,
+      loading,
+      error,
+      assetVersion,
+      setCurrentPage,
+      sessionId,
+      loadFeedback,
+      loadSession,
+      refresh,
+    ],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

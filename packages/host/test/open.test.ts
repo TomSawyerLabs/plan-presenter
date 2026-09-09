@@ -19,15 +19,25 @@ describe("resolveAllowed", () => {
     expect(p.toLowerCase()).toContain("f.txt");
   });
   test("accepts the root itself", async () => {
-    await expect(resolveAllowed(join(root, "allowed"), [join(root, "allowed")])).resolves.toBeTruthy();
+    await expect(
+      resolveAllowed(join(root, "allowed"), [join(root, "allowed")]),
+    ).resolves.toBeTruthy();
   });
   test("refuses siblings, prefix tricks, relative paths and missing paths", async () => {
-    await expect(resolveAllowed(join(root, "other"), [join(root, "allowed")])).rejects.toBeInstanceOf(OpenRefused);
+    await expect(
+      resolveAllowed(join(root, "other"), [join(root, "allowed")]),
+    ).rejects.toBeInstanceOf(OpenRefused);
     mkdirSync(join(root, "allowed-evil"), { recursive: true });
-    await expect(resolveAllowed(join(root, "allowed-evil"), [join(root, "allowed")])).rejects.toBeInstanceOf(OpenRefused);
+    await expect(
+      resolveAllowed(join(root, "allowed-evil"), [join(root, "allowed")]),
+    ).rejects.toBeInstanceOf(OpenRefused);
     await expect(resolveAllowed("relative/path", [root])).rejects.toBeInstanceOf(OpenRefused);
-    await expect(resolveAllowed(join(root, "allowed", "nope"), [join(root, "allowed")])).rejects.toBeInstanceOf(OpenRefused);
-    await expect(resolveAllowed(join(root, "allowed", "..", "other"), [join(root, "allowed")])).rejects.toBeInstanceOf(OpenRefused);
+    await expect(
+      resolveAllowed(join(root, "allowed", "nope"), [join(root, "allowed")]),
+    ).rejects.toBeInstanceOf(OpenRefused);
+    await expect(
+      resolveAllowed(join(root, "allowed", "..", "other"), [join(root, "allowed")]),
+    ).rejects.toBeInstanceOf(OpenRefused);
   });
   test("refuses everything when there are no roots", async () => {
     await expect(resolveAllowed(join(root, "allowed"), [])).rejects.toBeInstanceOf(OpenRefused);

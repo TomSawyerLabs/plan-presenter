@@ -11,13 +11,12 @@ This plan moves writes behind a durable queue so the HTTP path only validates
 and enqueues.
 
 <Callout kind="info" title="What I need from you">
-Pick the queue technology below, and comment on anything that looks wrong.
-Click any paragraph, chart, or diagram to leave feedback, then press
-**Send to agent**.
+  Pick the queue technology below, and comment on anything that looks wrong. Click any paragraph,
+  chart, or diagram to leave feedback, then press **Send to agent**.
 </Callout>
 
 <Question id="queue" options={["Redis Streams", "NATS JetStream", "Postgres table (SKIP LOCKED)"]}>
-Which queue should v1 use?
+  Which queue should v1 use?
 </Question>
 
 ## Current vs. proposed
@@ -36,7 +35,13 @@ flowchart LR
 
 Weekly p50/p99 handler latency from the staging experiment (ms):
 
-<Chart id="latency" title="Handler latency, staging" data="data/latency.json" xLabel="week" yLabel="ms" />
+<Chart
+  id="latency"
+  title="Handler latency, staging"
+  data="data/latency.json"
+  xLabel="week"
+  yLabel="ms"
+/>
 
 <Columns>
   <Column>

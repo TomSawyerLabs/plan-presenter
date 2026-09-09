@@ -23,7 +23,13 @@ export function FeedbackSidebar({ focusedId, onFocus }: FeedbackSidebarProps) {
   const visible = useMemo(
     () =>
       feedback
-        .filter((f) => (filter === "all" ? true : filter === "open" ? f.status !== "resolved" : f.status === "resolved"))
+        .filter((f) =>
+          filter === "all"
+            ? true
+            : filter === "open"
+              ? f.status !== "resolved"
+              : f.status === "resolved",
+        )
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
     [feedback, filter],
   );
@@ -55,7 +61,14 @@ export function FeedbackSidebar({ focusedId, onFocus }: FeedbackSidebarProps) {
         <span className="pp-spacer" />
         <div className="pp-seg" role="radiogroup">
           {(["all", "open", "resolved"] as const).map((f) => (
-            <button key={f} type="button" role="radio" aria-checked={filter === f} className={filter === f ? "pp-seg-active" : ""} onClick={() => setFilter(f)}>
+            <button
+              key={f}
+              type="button"
+              role="radio"
+              aria-checked={filter === f}
+              className={filter === f ? "pp-seg-active" : ""}
+              onClick={() => setFilter(f)}
+            >
               {f}
             </button>
           ))}
@@ -63,11 +76,20 @@ export function FeedbackSidebar({ focusedId, onFocus }: FeedbackSidebarProps) {
       </div>
 
       <div className="pp-send">
-        <button type="button" className="pp-button pp-button-primary pp-button-wide" disabled={sending || pending.length === 0} onClick={doSend}>
+        <button
+          type="button"
+          className="pp-button pp-button-primary pp-button-wide"
+          disabled={sending || pending.length === 0}
+          onClick={doSend}
+        >
           Send to agent {pending.length > 0 && <span className="pp-count">{pending.length}</span>}
         </button>
-        {sent !== null && <div className="pp-status-ok">Sent batch #{sent}. The agent will pick it up.</div>}
-        {pending.length === 0 && sent === null && <div className="pp-muted pp-small">Click anything on the page to add feedback.</div>}
+        {sent !== null && (
+          <div className="pp-status-ok">Sent batch #{sent}. The agent will pick it up.</div>
+        )}
+        {pending.length === 0 && sent === null && (
+          <div className="pp-muted pp-small">Click anything on the page to add feedback.</div>
+        )}
       </div>
 
       <div className="pp-sidebar-list">
@@ -76,7 +98,11 @@ export function FeedbackSidebar({ focusedId, onFocus }: FeedbackSidebarProps) {
           <section key={pageId} className="pp-fb-group">
             {byPage.size > 1 && (
               <h4 className="pp-fb-group-title">
-                <button type="button" className="pp-link-button" onClick={() => setCurrentPage(pageId)}>
+                <button
+                  type="button"
+                  className="pp-link-button"
+                  onClick={() => setCurrentPage(pageId)}
+                >
                   {pageTitle(pageId)}
                 </button>
               </h4>
@@ -86,7 +112,11 @@ export function FeedbackSidebar({ focusedId, onFocus }: FeedbackSidebarProps) {
                 key={f.id}
                 item={f}
                 focused={f.id === focusedId}
-                orphaned={f.anchor.blockId !== null && pages.get(pageId) !== undefined && !pages.get(pageId)!.blocks.some((b) => b.id === f.anchor.blockId)}
+                orphaned={
+                  f.anchor.blockId !== null &&
+                  pages.get(pageId) !== undefined &&
+                  !pages.get(pageId)!.blocks.some((b) => b.id === f.anchor.blockId)
+                }
                 onFocus={() => {
                   setCurrentPage(f.anchor.pageId);
                   onFocus(f);
@@ -100,7 +130,17 @@ export function FeedbackSidebar({ focusedId, onFocus }: FeedbackSidebarProps) {
   );
 }
 
-function FeedbackCard({ item, focused, orphaned, onFocus }: { item: Feedback; focused: boolean; orphaned: boolean; onFocus: () => void }) {
+function FeedbackCard({
+  item,
+  focused,
+  orphaned,
+  onFocus,
+}: {
+  item: Feedback;
+  focused: boolean;
+  orphaned: boolean;
+  onFocus: () => void;
+}) {
   const { updateFeedback, deleteFeedback, reply } = useSession();
   const [replyText, setReplyText] = useState("");
   const [replying, setReplying] = useState(false);
@@ -119,13 +159,26 @@ function FeedbackCard({ item, focused, orphaned, onFocus }: { item: Feedback; fo
   };
 
   return (
-    <div ref={ref} className={`pp-fb pp-fb-${item.kind}${focused ? " pp-fb-focused" : ""}${resolved ? " pp-fb-resolved" : ""}`}>
-      <div className="pp-fb-head" onClick={onFocus} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onFocus()}>
+    <div
+      ref={ref}
+      className={`pp-fb pp-fb-${item.kind}${focused ? " pp-fb-focused" : ""}${resolved ? " pp-fb-resolved" : ""}`}
+    >
+      <div
+        className="pp-fb-head"
+        onClick={onFocus}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => e.key === "Enter" && onFocus()}
+      >
         <span className={`pp-chip pp-chip-${item.kind} pp-chip-small`}>
           <span aria-hidden="true">{KIND_ICON[item.kind]}</span> {KIND_LABEL[item.kind]}
         </span>
         <span className="pp-muted pp-small">
-          {item.anchor.block ? `L${item.anchor.block.line.start}` : item.anchor.targetId ? `#${item.anchor.targetId}` : "page"}
+          {item.anchor.block
+            ? `L${item.anchor.block.line.start}`
+            : item.anchor.targetId
+              ? `#${item.anchor.targetId}`
+              : "page"}
         </span>
         {item.batch !== null && <span className="pp-muted pp-small">batch {item.batch}</span>}
         {item.status === "acknowledged" && <span className="pp-tag">agent replied</span>}
@@ -142,7 +195,10 @@ function FeedbackCard({ item, focused, orphaned, onFocus }: { item: Feedback; fo
         <div className="pp-fb-replies">
           {item.replies.map((r) => (
             <div key={r.id} className={`pp-reply pp-reply-${r.author}`}>
-              <span className="pp-reply-author">{r.author === "agent" ? "🤖 agent" : "🧑 you"}</span> {r.body}
+              <span className="pp-reply-author">
+                {r.author === "agent" ? "🤖 agent" : "🧑 you"}
+              </span>{" "}
+              {r.body}
             </div>
           ))}
         </div>
@@ -170,11 +226,19 @@ function FeedbackCard({ item, focused, orphaned, onFocus }: { item: Feedback; fo
             <button type="button" className="pp-link-button" onClick={() => setReplying(true)}>
               Reply
             </button>
-            <button type="button" className="pp-link-button" onClick={() => updateFeedback(item.id, { status: resolved ? "open" : "resolved" })}>
+            <button
+              type="button"
+              className="pp-link-button"
+              onClick={() => updateFeedback(item.id, { status: resolved ? "open" : "resolved" })}
+            >
               {resolved ? "Reopen" : "Resolve"}
             </button>
             {item.batch === null && (
-              <button type="button" className="pp-link-button pp-danger" onClick={() => deleteFeedback(item.id)}>
+              <button
+                type="button"
+                className="pp-link-button pp-danger"
+                onClick={() => deleteFeedback(item.id)}
+              >
                 Delete
               </button>
             )}

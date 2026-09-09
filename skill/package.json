@@ -1,9 +1,9 @@
 {
   "name": "@plan-presenter/skill",
-  "private": true,
   "version": "0.0.0",
-  "type": "module",
+  "private": true,
   "description": "Installable agent skill: SKILL.md plus the dependency-free `pp` CLI that talks to the plan-presenter host.",
+  "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit"
   },

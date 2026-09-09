@@ -90,7 +90,8 @@ export async function createHost(opts: HostOptions): Promise<Host> {
     if (err instanceof NotFound) return c.json({ error: err.message }, 404);
     if (err instanceof Conflict) return c.json({ error: err.message }, 409);
     if (err instanceof OpenRefused) return c.json({ error: err.message }, 403);
-    if (err instanceof z.ZodError) return c.json({ error: "invalid request", issues: err.issues }, 400);
+    if (err instanceof z.ZodError)
+      return c.json({ error: "invalid request", issues: err.issues }, 400);
     if (err instanceof SyntaxError) return c.json({ error: `invalid JSON: ${err.message}` }, 400);
     console.error(err);
     return c.json({ error: err.message ?? "internal error" }, 500);
@@ -112,7 +113,9 @@ export async function createHost(opts: HostOptions): Promise<Host> {
         }
       }),
     );
-    return c.json(summaries.filter((s) => s !== null).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
+    return c.json(
+      summaries.filter((s) => s !== null).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+    );
   });
 
   app.post("/api/sessions", async (c) => {
@@ -186,7 +189,10 @@ export async function createHost(opts: HostOptions): Promise<Host> {
     const abs = await store.assetPath(id, rel);
     const file = Bun.file(abs);
     return new Response(file, {
-      headers: { "content-type": file.type || "application/octet-stream", "cache-control": "no-cache" },
+      headers: {
+        "content-type": file.type || "application/octet-stream",
+        "cache-control": "no-cache",
+      },
     });
   });
 
@@ -304,7 +310,12 @@ export async function createHost(opts: HostOptions): Promise<Host> {
       const url = new URL(c.req.url);
       const rel = decodeURIComponent(url.pathname).replace(/^\/+/, "");
       const candidate = resolve(uiDir, rel);
-      if (rel && candidate.startsWith(uiDir) && existsSync(candidate) && (await Bun.file(candidate).exists())) {
+      if (
+        rel &&
+        candidate.startsWith(uiDir) &&
+        existsSync(candidate) &&
+        (await Bun.file(candidate).exists())
+      ) {
         const f = Bun.file(candidate);
         const immutable = rel.startsWith("assets/");
         return new Response(f, {

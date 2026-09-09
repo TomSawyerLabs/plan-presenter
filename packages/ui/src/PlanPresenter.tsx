@@ -12,9 +12,23 @@ export interface PlanPresenterProps {
 }
 
 /** One session, ready to drop into any React tree. */
-export function PlanPresenter({ transport, sessionId, pageId, onPageChange, onBack, onError }: PlanPresenterProps) {
+export function PlanPresenter({
+  transport,
+  sessionId,
+  pageId,
+  onPageChange,
+  onBack,
+  onError,
+}: PlanPresenterProps) {
   return (
-    <SessionProvider key={sessionId} transport={transport} sessionId={sessionId} pageId={pageId} onPageChange={onPageChange} onError={onError}>
+    <SessionProvider
+      key={sessionId}
+      transport={transport}
+      sessionId={sessionId}
+      pageId={pageId}
+      onPageChange={onPageChange}
+      onError={onError}
+    >
       <SessionView onBack={onBack} />
     </SessionProvider>
   );

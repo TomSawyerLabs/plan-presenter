@@ -51,8 +51,18 @@ describe("SessionStore", () => {
   test("feedback lifecycle and batches", async () => {
     const m = await store.createSession({ id: "s2", title: "T", allowedRoots: [], meta: {} });
     const anchor = { pageId: "p", blockId: "p-1", block: null, selection: null, targetId: null };
-    const f1 = await store.createFeedback(m.id, { kind: "change", anchor, body: "fix", author: "human" });
-    const f2 = await store.createFeedback(m.id, { kind: "approve", anchor, body: "", author: "human" });
+    const f1 = await store.createFeedback(m.id, {
+      kind: "change",
+      anchor,
+      body: "fix",
+      author: "human",
+    });
+    const f2 = await store.createFeedback(m.id, {
+      kind: "approve",
+      anchor,
+      body: "",
+      author: "human",
+    });
     expect((await store.listFeedback(m.id)).map((f) => f.id)).toEqual([f1.id, f2.id]);
 
     const sent = await store.sendBatch(m.id);
@@ -60,7 +70,12 @@ describe("SessionStore", () => {
     expect(sent.items.map((f) => f.id)).toEqual([f1.id, f2.id]);
     expect((await store.readManifest(m.id)).status).toBe("reviewed");
 
-    const f3 = await store.createFeedback(m.id, { kind: "comment", anchor, body: "later", author: "human" });
+    const f3 = await store.createFeedback(m.id, {
+      kind: "comment",
+      anchor,
+      body: "later",
+      author: "human",
+    });
     expect((await store.listFeedback(m.id, { since: 1 })).length).toBe(0); // f3 not batched yet
     const sent2 = await store.sendBatch(m.id);
     expect(sent2.items.map((f) => f.id)).toEqual([f3.id]);
@@ -72,7 +87,10 @@ describe("SessionStore", () => {
     expect(replied.replies[0]?.body).toBe("done");
     const resolved = await store.updateFeedback(m.id, f1.id, { status: "resolved" });
     expect(resolved.status).toBe("resolved");
-    expect((await store.listFeedback(m.id, { status: "open" })).map((f) => f.id)).toEqual([f2.id, f3.id]);
+    expect((await store.listFeedback(m.id, { status: "open" })).map((f) => f.id)).toEqual([
+      f2.id,
+      f3.id,
+    ]);
 
     const summary = await store.summary(m.id);
     expect(summary.openFeedback).toBe(2);
@@ -84,7 +102,12 @@ describe("SessionStore", () => {
       mkdirSync(join(ext, "pages"));
       writeFileSync(
         join(ext, "session.json"),
-        JSON.stringify({ id: "ext1", title: "Ext", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }),
+        JSON.stringify({
+          id: "ext1",
+          title: "Ext",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }),
       );
       writeFileSync(join(ext, "pages", "01.mdx"), "# hi\n");
       const m = await store.registerExternal(ext);

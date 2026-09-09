@@ -13,7 +13,7 @@ export interface MermaidProps {
   [attr: `data-${string}`]: string | undefined;
 }
 
-let mermaidPromise: Promise<typeof import("mermaid")["default"]> | null = null;
+let mermaidPromise: Promise<(typeof import("mermaid"))["default"]> | null = null;
 function loadMermaid() {
   mermaidPromise ??= import("mermaid").then((m) => m.default);
   return mermaidPromise;
@@ -60,7 +60,9 @@ export function Mermaid(props: MermaidProps) {
     };
   }, [source, dark, reactId]);
 
-  const dataAttrs = Object.fromEntries(Object.entries(props).filter(([k]) => k.startsWith("data-")));
+  const dataAttrs = Object.fromEntries(
+    Object.entries(props).filter(([k]) => k.startsWith("data-")),
+  );
   return (
     <figure className="pp-mermaid" data-pp-target={props.id} {...dataAttrs}>
       {error ? (

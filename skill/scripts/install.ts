@@ -33,7 +33,11 @@ if (!existsSync(join(repoDir, "packages", "host", "src", "cli.ts"))) {
 const dist = join(repoDir, "packages", "ui", "dist", "index.html");
 if (!existsSync(dist) || flags.build) {
   console.log("building UI…");
-  const r = Bun.spawnSync(["bun", "run", "build"], { cwd: repoDir, stdout: "inherit", stderr: "inherit" });
+  const r = Bun.spawnSync(["bun", "run", "build"], {
+    cwd: repoDir,
+    stdout: "inherit",
+    stderr: "inherit",
+  });
   if (r.exitCode !== 0) process.exit(r.exitCode);
 }
 
@@ -41,7 +45,10 @@ if (!existsSync(dist) || flags.build) {
 if (existsSync(target)) rmSync(target, { recursive: true, force: true });
 mkdirSync(target, { recursive: true });
 cpSync(join(skillDir(), "SKILL.md"), join(target, "SKILL.md"));
-cpSync(join(skillDir(), "scripts"), join(target, "scripts"), { recursive: true, filter: (src) => !src.endsWith("install.ts") });
+cpSync(join(skillDir(), "scripts"), join(target, "scripts"), {
+  recursive: true,
+  filter: (src) => !src.endsWith("install.ts"),
+});
 cpSync(join(skillDir(), "reference"), join(target, "reference"), { recursive: true });
 
 // 3. Record the repo dir for `pp serve`.

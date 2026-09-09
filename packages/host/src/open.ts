@@ -51,10 +51,7 @@ export async function resolveAllowed(path: string, allowedRoots: string[]): Prom
   return real;
 }
 
-export async function openInFileManager(
-  path: string,
-  allowedRoots: string[],
-): Promise<OpenResult> {
+export async function openInFileManager(path: string, allowedRoots: string[]): Promise<OpenResult> {
   const real = await resolveAllowed(path, allowedRoots);
   const s = await stat(real);
   const isDir = s.isDirectory();

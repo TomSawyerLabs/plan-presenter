@@ -33,7 +33,9 @@ export interface PageViewProps {
 
 export function PageView({ onFocusFeedback, focusedBlockId }: PageViewProps) {
   const { page, feedback, currentPageId } = useSession();
-  const [Content, setContent] = useState<MDXContent | null>(null);
+  // Evaluated module, tagged with the page it came from so a stale one is
+  // never rendered for a different page/hash.
+  const [evaluated, setEvaluated] = useState<{ key: string; Content: MDXContent } | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
   const [target, setTarget] = useState<ComposerTarget | null>(null);
   const [markers, setMarkers] = useState<Marker[]>([]);
@@ -41,15 +43,13 @@ export function PageView({ onFocusFeedback, focusedBlockId }: PageViewProps) {
 
   // Evaluate compiled MDX whenever the page hash changes.
   useEffect(() => {
-    if (!page) {
-      setContent(null);
-      return;
-    }
+    if (!page) return;
+    const key = `${page.id}:${page.hash}`;
     let cancelled = false;
     run(page.code, { ...runtime, useMDXComponents, baseUrl: import.meta.url })
       .then((mod) => {
         if (!cancelled) {
-          setContent(() => mod.default);
+          setEvaluated({ key, Content: mod.default });
           setRunError(null);
         }
       })
@@ -59,7 +59,10 @@ export function PageView({ onFocusFeedback, focusedBlockId }: PageViewProps) {
     return () => {
       cancelled = true;
     };
-  }, [page?.hash, page?.id]);
+  }, [page]);
+
+  const Content =
+    page && evaluated && evaluated.key === `${page.id}:${page.hash}` ? evaluated.Content : null;
 
   const blocksById = useMemo(() => new Map((page?.blocks ?? []).map((b) => [b.id, b])), [page]);
   const pageFeedback = useMemo(
@@ -105,7 +108,9 @@ export function PageView({ onFocusFeedback, focusedBlockId }: PageViewProps) {
     }
     for (const f of pageFeedback) {
       if (!f.anchor.blockId) continue;
-      const el = root.querySelector<HTMLElement>(`[${BLOCK_ATTR}="${CSS.escape(f.anchor.blockId)}"]`);
+      const el = root.querySelector<HTMLElement>(
+        `[${BLOCK_ATTR}="${CSS.escape(f.anchor.blockId)}"]`,
+      );
       el?.classList.add(f.status === "resolved" ? "pp-block-resolved" : "pp-block-open");
     }
     if (focusedBlockId) {
@@ -136,7 +141,10 @@ export function PageView({ onFocusFeedback, focusedBlockId }: PageViewProps) {
     const root = containerRef.current!;
     const r = blockEl.getBoundingClientRect();
     const rootR = root.getBoundingClientRect();
-    const targetId = blockEl.querySelector<HTMLElement>("[data-pp-target]")?.dataset.ppTarget ?? blockEl.dataset.ppTarget ?? null;
+    const targetId =
+      blockEl.querySelector<HTMLElement>("[data-pp-target]")?.dataset.ppTarget ??
+      blockEl.dataset.ppTarget ??
+      null;
     setTarget({
       block: info,
       selection,
@@ -149,7 +157,12 @@ export function PageView({ onFocusFeedback, focusedBlockId }: PageViewProps) {
 
   const onClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const el = e.target as HTMLElement;
-    if (el.closest("a, button, input, textarea, select, label, summary, [data-pp-interactive], .pp-composer, .pp-marker")) return;
+    if (
+      el.closest(
+        "a, button, input, textarea, select, label, summary, [data-pp-interactive], .pp-composer, .pp-marker",
+      )
+    )
+      return;
     const sel = window.getSelection();
     if (sel && !sel.isCollapsed && sel.toString().trim()) return; // handled by onMouseUp
     const found = blockFromElement(el);
@@ -163,7 +176,8 @@ export function PageView({ onFocusFeedback, focusedBlockId }: PageViewProps) {
     const sel = window.getSelection();
     const text = sel?.toString().trim() ?? "";
     if (!sel || sel.isCollapsed || !text) return;
-    const anchorNode = sel.anchorNode instanceof HTMLElement ? sel.anchorNode : sel.anchorNode?.parentElement;
+    const anchorNode =
+      sel.anchorNode instanceof HTMLElement ? sel.anchorNode : sel.anchorNode?.parentElement;
     if (!anchorNode) return;
     const found = blockFromElement(anchorNode);
     if (!found) return;

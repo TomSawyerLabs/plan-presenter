@@ -37,7 +37,13 @@ export const KIND_ICON: Record<FeedbackKind, string> = {
 
 const KINDS: FeedbackKind[] = ["comment", "change", "question", "request", "approve", "reject"];
 
-export function FeedbackComposer({ target, onClose }: { target: ComposerTarget; onClose: () => void }) {
+export function FeedbackComposer({
+  target,
+  onClose,
+}: {
+  target: ComposerTarget;
+  onClose: () => void;
+}) {
   const { createFeedback, currentPageId } = useSession();
   const [kind, setKind] = useState<FeedbackKind>(target.selection ? "change" : "comment");
   const [body, setBody] = useState("");
@@ -94,7 +100,9 @@ export function FeedbackComposer({ target, onClose }: { target: ComposerTarget; 
           ×
         </button>
       </div>
-      {target.selection && <blockquote className="pp-composer-quote">{target.selection}</blockquote>}
+      {target.selection && (
+        <blockquote className="pp-composer-quote">{target.selection}</blockquote>
+      )}
       <div className="pp-kinds" role="radiogroup">
         {KINDS.map((k) => (
           <button
@@ -114,7 +122,11 @@ export function FeedbackComposer({ target, onClose }: { target: ComposerTarget; 
         rows={3}
         value={body}
         placeholder={
-          kind === "approve" ? "Optional note" : kind === "request" ? "What should the agent do next?" : "Say what you think…"
+          kind === "approve"
+            ? "Optional note"
+            : kind === "request"
+              ? "What should the agent do next?"
+              : "Say what you think…"
         }
         onChange={(e) => setBody(e.target.value)}
         onKeyDown={(e) => {
@@ -123,7 +135,12 @@ export function FeedbackComposer({ target, onClose }: { target: ComposerTarget; 
       />
       {err && <div className="pp-status-err">{err}</div>}
       <div className="pp-row pp-composer-actions">
-        <button type="button" className="pp-button pp-button-primary" disabled={busy} onClick={submit}>
+        <button
+          type="button"
+          className="pp-button pp-button-primary"
+          disabled={busy}
+          onClick={submit}
+        >
           Add {KIND_LABEL[kind].toLowerCase()}
         </button>
         <span className="pp-muted pp-kbd-hint">Ctrl+Enter</span>

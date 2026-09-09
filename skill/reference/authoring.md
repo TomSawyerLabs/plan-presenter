@@ -13,7 +13,9 @@ order: 1
 
 Plain Markdown works: **bold**, lists, tables, `code`, images, links.
 
-<Callout kind="warning" title="Downtime">About 4 minutes during the cut-over.</Callout>
+<Callout kind="warning" title="Downtime">
+  About 4 minutes during the cut-over.
+</Callout>
 ```
 
 Every block-level element (paragraph, heading, list item, table, code block,
@@ -27,9 +29,14 @@ feedback lands precisely: split long paragraphs, one idea per list item.
 ```mdx
 <Chart
   title="Latency (ms)"
-  data={[[0, 1, 2, 3], [120, 110, 95, 90], [300, 280, 240, 210]]}
+  data={[
+    [0, 1, 2, 3],
+    [120, 110, 95, 90],
+    [300, 280, 240, 210],
+  ]}
   series={["p50", "p99"]}
-  xLabel="week" yLabel="ms"
+  xLabel="week"
+  yLabel="ms"
 />
 ```
 
@@ -61,8 +68,12 @@ git graph, etc. Keep node labels short; complex diagrams get their own page.
 ### `<Question>` — ask the human
 
 ```mdx
-<Question id="db" options={["Postgres", "SQLite"]}>Which store for v1?</Question>
-<Question id="notes" text placeholder="Anything else?">Other constraints?</Question>
+<Question id="db" options={["Postgres", "SQLite"]}>
+  Which store for v1?
+</Question>
+<Question id="notes" text placeholder="Anything else?">
+  Other constraints?
+</Question>
 ```
 
 Props: `id` (required, unique per session), `options` (string[]), `multiple`,
@@ -82,7 +93,9 @@ Paths must be absolute and inside the session's allowed roots (`pp new --root`).
 ### Layout & content
 
 ```mdx
-<Section id="risks" title="Risks">…</Section>
+<Section id="risks" title="Risks">
+  …
+</Section>
 
 <Columns min="16rem">
   <Column>left</Column>
@@ -91,7 +104,9 @@ Paths must be absolute and inside the session's allowed roots (`pp new --root`).
 
 <Stat label="Rows migrated" value="1.2M" hint="of 1.4M" />
 
-<Callout kind="info|note|tip|warning|danger|success" title="…">…</Callout>
+<Callout kind="info|note|tip|warning|danger|success" title="…">
+  …
+</Callout>
 
 <Figure src="assets/before.png" caption="Before" width="60%" />
 ```
@@ -105,6 +120,7 @@ Standard Markdown/HTML, relative to the session directory:
 
 ```mdx
 ![Screenshot](assets/screenshot.png)
+
 <Video src="assets/demo.mp4" />
 <Audio src="assets/clip.m4a" />
 <video controls src="assets/demo.webm" />

@@ -1,9 +1,9 @@
 {
   "name": "@plan-presenter/protocol",
-  "private": true,
   "version": "0.0.0",
-  "type": "module",
+  "private": true,
   "description": "Shared schemas and types for plan-presenter: session manifest, pages, blocks, feedback, and live events.",
+  "type": "module",
   "exports": {
     ".": "./src/index.ts"
   },

@@ -17,7 +17,9 @@ export function Folder(props: FolderProps) {
   const { path, children } = props;
   const session = useSessionOptional();
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
-  const dataAttrs = Object.fromEntries(Object.entries(props).filter(([k]) => k.startsWith("data-")));
+  const dataAttrs = Object.fromEntries(
+    Object.entries(props).filter(([k]) => k.startsWith("data-")),
+  );
 
   const open = async () => {
     if (!session) return setStatus({ ok: false, text: "No host connection" });
@@ -36,14 +38,22 @@ export function Folder(props: FolderProps) {
         <span aria-hidden="true">📁</span> {children ?? <code>{path}</code>}
       </button>
       {children != null && <code className="pp-folder-path">{path}</code>}
-      {status && <span className={status.ok ? "pp-status-ok" : "pp-status-err"}>{status.text}</span>}
+      {status && (
+        <span className={status.ok ? "pp-status-ok" : "pp-status-err"}>{status.text}</span>
+      )}
     </span>
   );
 }
 
 /** True for hrefs that mean "open this on the host machine". */
 export function isLocalPathHref(href: string): boolean {
-  return /^(file|folder|path):/i.test(href) || /^[A-Za-z]:[\\/]/.test(href) || href.startsWith("/") && !href.startsWith("//") && /^\/(Users|home|mnt|opt|srv|var|tmp|etc)\b/.test(href);
+  return (
+    /^(file|folder|path):/i.test(href) ||
+    /^[A-Za-z]:[\\/]/.test(href) ||
+    (href.startsWith("/") &&
+      !href.startsWith("//") &&
+      /^\/(Users|home|mnt|opt|srv|var|tmp|etc)\b/.test(href))
+  );
 }
 
 /** Turn `file:///C:/x`, `folder://C:/x`, `path:C:/x` into a plain path. */

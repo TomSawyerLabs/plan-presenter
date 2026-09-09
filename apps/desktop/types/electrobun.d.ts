@@ -28,7 +28,10 @@ declare module "electrobun/bun" {
   }
   export class BrowserWindow {
     constructor(options?: BrowserWindowOptions);
-    on(event: "close" | "resize" | "move" | "focus" | "blur", handler: (...args: unknown[]) => void): void;
+    on(
+      event: "close" | "resize" | "move" | "focus" | "blur",
+      handler: (...args: unknown[]) => void,
+    ): void;
     close(): void;
     focus(): void;
     setTitle(title: string): void;
@@ -58,7 +61,13 @@ declare module "electrobun" {
       copy?: Record<string, string>;
       watch?: string[];
       watchIgnore?: string[];
-      mac?: { bundleCEF?: boolean; codesign?: boolean; notarize?: boolean; createDmg?: boolean; icons?: string };
+      mac?: {
+        bundleCEF?: boolean;
+        codesign?: boolean;
+        notarize?: boolean;
+        createDmg?: boolean;
+        icons?: string;
+      };
       win?: { bundleCEF?: boolean; icon?: string };
       linux?: { bundleCEF?: boolean; icon?: string };
     };

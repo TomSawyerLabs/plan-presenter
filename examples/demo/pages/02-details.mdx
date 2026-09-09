@@ -7,11 +7,11 @@ order: 2
 
 ## Schema changes
 
-| table | change | reversible |
-|---|---|---|
-| `events` | add `ingest_id uuid unique` | yes |
-| `events` | add index on `(tenant_id, created_at)` | yes |
-| `ingest_queue` | new (only for the Postgres-queue option) | yes |
+| table          | change                                   | reversible |
+| -------------- | ---------------------------------------- | ---------- |
+| `events`       | add `ingest_id uuid unique`              | yes        |
+| `events`       | add index on `(tenant_id, created_at)`   | yes        |
+| `ingest_queue` | new (only for the Postgres-queue option) | yes        |
 
 ## Worker loop
 
@@ -42,4 +42,6 @@ sequenceDiagram
   W->>Q: ack(batch)
 ```
 
-<Question id="batch" text placeholder="e.g. 100, or 'measure first'">What batch size should the worker start with?</Question>
+<Question id="batch" text placeholder="e.g. 100, or 'measure first'">
+  What batch size should the worker start with?
+</Question>
