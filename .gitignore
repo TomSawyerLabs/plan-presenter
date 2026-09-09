@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+# desktop shell build output
+apps/desktop/build/
+apps/desktop/dist/
+# runtime data
+.plan-presenter/
+# example sessions get feedback written by the host when registered
+examples/**/feedback.json

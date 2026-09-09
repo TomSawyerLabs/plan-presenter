@@ -1,0 +1,37 @@
+{
+  "name": "@plan-presenter/host",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "plan-presenter host: watches session directories, compiles MDX pages, serves the UI over HTTP/WebSocket, and stores feedback.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "pp-host": "./src/cli.ts"
+  },
+  "scripts": {
+    "dev": "bun run --hot src/cli.ts",
+    "start": "bun run src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@mdx-js/mdx": "^3.1.1",
+    "@plan-presenter/protocol": "workspace:*",
+    "chokidar": "^5.0.0",
+    "hono": "^4.13.0",
+    "mdast-util-to-string": "^4.0.0",
+    "remark-frontmatter": "^5.0.0",
+    "remark-gfm": "^4.0.1",
+    "remark-mdx-frontmatter": "^5.2.0",
+    "unist-util-visit": "^5.0.0",
+    "yaml": "^2.9.0",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/mdast": "^4.0.4",
+    "typescript": "^5.9.0"
+  }
+}

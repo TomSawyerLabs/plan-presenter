@@ -1,0 +1,19 @@
+{
+  "name": "@plan-presenter/protocol",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Shared schemas and types for plan-presenter: session manifest, pages, blocks, feedback, and live events.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0"
+  }
+}
