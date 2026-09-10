@@ -1,0 +1,76 @@
+# Release: push a tag `vX.Y.Z` that matches package.json's version.
+# Builds everything through the CI workflow (stable desktop env), then creates a
+# GitHub Release carrying the host binaries, the desktop installers, and the
+# skill bundle. Nothing is ever published from a workstation.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-tag:
+    name: Tag matches package.json version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - shell: bash
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          tag="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_REF_TYPE}" != "tag" ]]; then
+            echo "manual dispatch: building for package.json version v${version} (no release will be created)"
+            exit 0
+          fi
+          if [[ "$tag" != "v$version" ]]; then
+            echo "tag $tag does not match package.json version v$version" >&2
+            exit 1
+          fi
+
+  build:
+    needs: verify-tag
+    uses: ./.github/workflows/ci.yml
+    with:
+      env: stable
+
+  release:
+    name: Create GitHub Release
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+      - name: Package the skill bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          tar -czf dist/plan-presenter-skill.tar.gz -C skill SKILL.md reference scripts
+      - name: Collect release files
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -R artifacts
+          cp artifacts/pp-host-binaries/* dist/
+          for d in artifacts/plan-presenter-*; do cp "$d"/* dist/; done
+          ls -la dist
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --title "plan-presenter ${GITHUB_REF_NAME}" \
+            --generate-notes

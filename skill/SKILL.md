@@ -85,14 +85,18 @@ Answers arrive as `ANSWER · target #db` items in `pp wait` output.
 - Never put secrets in a session; the host has no auth and may be on the LAN.
 - `<Folder path="…">` and `[text](file:///…)` links open the OS file manager
   on the host machine, only inside `allowedRoots`. Nothing else executes.
-- If `pp` cannot reach the host, run `$PP serve`. If that fails, the repo path
-  in `~/.plan-presenter/config.json` is wrong; re-run the installer from the
-  plan-presenter repo (`bun run skill/scripts/install.ts`).
+- If `pp` cannot reach the host, run `$PP serve`. It starts the host from the repo
+  checkout recorded in `~/.plan-presenter/config.json` (dev installs), otherwise
+  from a prebuilt binary in `~/.plan-presenter/bin` that it downloads from GitHub
+  Releases on first use. `$PP update` fetches the latest binary; `$PP stop` stops the host.
 
 ## Command reference
 
 ```
 pp serve [--lan] [--port N]              start the host if not running
+pp stop                                  stop the host started by pp serve
+pp update [--tag vX.Y.Z]                 download the latest prebuilt host binary
+pp version                               CLI / binary / running-host versions
 pp status [<session>]                    host health, or session summary + URL
 pp sessions                              list sessions
 pp new "<title>" [--id x] [--root DIR] [--dir DIR]

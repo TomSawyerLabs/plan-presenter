@@ -17,39 +17,55 @@ agent ◀── pp wait ──────────────────�
 
 ## Layout
 
-| Path                | What                                                                                                                                                                                                                                           |
+| Path | tar -xz | What |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/protocol` | Zod schemas and types shared by everything: session manifest, compiled pages, block anchors, feedback, live events; the agent-facing Markdown formatter.                                                                                       |
-| `packages/host`     | Bun host: compiles MDX with per-block anchors (stable ids + source lines), watches session dirs, stores feedback as JSON in the session dir, serves the UI, REST + WebSocket, safe "open folder". Framework-agnostic core plus a Hono adapter. |
-| `packages/ui`       | React UI (Vite). Click-anywhere feedback, selection quoting, gutter markers, feedback sidebar, live reload. Exported as an embeddable `<PlanPresenter>` with a pluggable `Transport`.                                                          |
-| `apps/desktop`      | Thin Electrobun shell: runs the host in-process and opens a native window.                                                                                                                                                                     |
-| `skill/`            | Installable agent skill: `SKILL.md`, the dependency-free `pp` CLI, an authoring reference.                                                                                                                                                     |
-| `examples/demo`     | A sample session (register it to try the UI).                                                                                                                                                                                                  |
-| `plans/`            | Living design/progress doc.                                                                                                                                                                                                                    |
+| `packages/protocol` | Zod schemas and types shared by everything: session manifest, compiled pages, block anchors, feedback, live events; the agent-facing Markdown formatter. | tar -xz |
+| `packages/host` | tar -xz | Bun host: compiles MDX with per-block anchors (stable ids + source lines), watches session dirs, stores feedback as JSON in the session dir, serves the UI, REST + WebSocket, safe "open folder". Framework-agnostic core plus a Hono adapter. |
+| `packages/ui` | tar -xz | React UI (Vite). Click-anywhere feedback, selection quoting, gutter markers, feedback sidebar, live reload. Exported as an embeddable `<PlanPresenter>` with a pluggable `Transport`. |
+| `apps/desktop` | tar -xz | Thin Electrobun shell: runs the host in-process and opens a native window. |
+| `skill/` | tar -xz | Installable agent skill: `SKILL.md`, the dependency-free `pp` CLI, an authoring reference. |
+| `examples/demo` | tar -xz | A sample session (register it to try the UI). |
+| `plans/` | tar -xz | Living design/progress doc. |
 
-## Quick start
+## Install (any machine with Bun)
 
-Everything runs from a local checkout; nothing is published yet (CI builds
-desktop installers as workflow artifacts).
+Grab the skill bundle from the [latest release](https://github.com/TomSawyerLabs/plan-presenter/releases/latest)
+and unpack it into your skills directory:
+
+```sh
+mkdir -p ~/.claude/skills/plan-presenter
+curl -L https://github.com/TomSawyerLabs/plan-presenter/releases/latest/download/plan-presenter-skill.tar.gz \n  | tar -xz| tar -xz -C ~/.claude/skills/plan-presenter
+```
+
+The first `pp serve` downloads a self-contained host binary for your platform
+(`pp-host-<os>-<arch>`, Bun runtime + host + UI, ~100 MB) into
+`~/.plan-presenter/bin`. `pp update` refreshes it. Desktop installers for
+Windows, macOS, and Linux are on the same release page.
+
+## Development install (from a checkout)
 
 ```sh
 git clone git@github.com:TomSawyerLabs/plan-presenter.git
 cd plan-presenter
 bun install
-bun run build                       # builds the UI into packages/ui/dist
-bun run skill/scripts/install.ts    # installs the skill to ~/.claude/skills/plan-presenter
-                                    #   (--project for ./.claude/skills)
+bun run build  | tar -xz                     # builds the UI into packages/ui/dist
+bun run skill/scripts/install.ts  | tar -xz  # installs the skill to ~/.claude/skills/plan-presenter
+  | tar -xz                                  #   (--project for ./.claude/skills)
 ```
+
+The installer records the checkout in `~/.plan-presenter/config.json`, so
+`pp serve` runs the host from source (and serves `packages/ui/dist`) instead
+of the prebuilt binary.
 
 Then, as an agent (or by hand):
 
 ```sh
 PP="bun run ~/.claude/skills/plan-presenter/scripts/pp.ts"
-$PP serve                           # starts the host at http://127.0.0.1:27411 (add --lan for 0.0.0.0)
-$PP new "My plan" --root "$PWD"     # prints the session dir + URL
+$PP serve  | tar -xz                         # starts the host at http://127.0.0.1:27411 (add --lan for 0.0.0.0)
+$PP new "My plan" --root "$PWD"  | tar -xz   # prints the session dir + URL
 # write <session dir>/pages/01-overview.mdx ...
-$PP review <id> --open              # marks awaiting-review, opens the browser
-$PP wait <id>                       # blocks until the human presses "Send to agent"
+$PP review <id> --open  | tar -xz            # marks awaiting-review, opens the browser
+$PP wait <id>  | tar -xz                     # blocks until the human presses "Send to agent"
 $PP reply <id> <feedbackId> "done"; $PP resolve <id> <feedbackId>
 ```
 
@@ -57,7 +73,7 @@ To look at the bundled example: `$PP serve`, then register it:
 
 ```sh
 curl -X POST -H 'content-type: application/json' http://127.0.0.1:27411/api/sessions/register \
-  -d '{"dir":"<abs path to>/examples/demo"}'
+  | tar -xz-d '{"dir":"<abs path to>/examples/demo"}'
 ```
 
 and open `http://127.0.0.1:27411/#/s/demo`.
@@ -65,11 +81,11 @@ and open `http://127.0.0.1:27411/#/s/demo`.
 ## Development
 
 ```sh
-bun run dev        # host with hot reload on :27411 (serves packages/ui/dist if built)
-bun run dev:ui     # Vite dev server on :27412, proxies /api and /ws to the host
-bun run typecheck  # every workspace
-bun test           # host + protocol unit tests
-bun run check      # format:check + lint + typecheck + test (what CI runs)
+bun run dev  | tar -xz      # host with hot reload on :27411 (serves packages/ui/dist if built)
+bun run dev:ui  | tar -xz   # Vite dev server on :27412, proxies /api and /ws to the host
+bun run typecheck  | tar -xz# every workspace
+bun test  | tar -xz         # host + protocol unit tests
+bun run check  | tar -xz    # format:check + lint + typecheck + test (what CI runs)
 ```
 
 Formatting is oxfmt, linting is oxlint; lefthook runs both on staged files at
@@ -82,15 +98,37 @@ bun run build
 cd apps/desktop && bun run dev
 ```
 
+Self-contained host binaries (used by `pp serve` when there is no checkout):
+
+```sh
+bun run build
+bun run packages/host/scripts/build-binaries.ts --current  | tar -xz # or omit for all five targets
+packages/host/bin/pp-host-<os>-<arch> --version
+```
+
+## Releasing
+
+Bump `version` in every `package.json` (and `apps/desktop/electrobun.config.ts`),
+commit, then push a matching tag:
+
+```sh
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+`.github/workflows/release.yml` verifies the tag against `package.json`, runs the
+full CI (stable desktop builds), and creates a GitHub Release with the host
+binaries, desktop installers, and the skill bundle. Nothing is published from a
+workstation.
+
 ## Session layout (what the agent writes)
 
 ```
 <session dir>/
-  session.json       id, title, status, allowedRoots, page order, meta
-  pages/*.mdx        one page per file; frontmatter title/order
-  assets/**          images, video, audio (served read-only)
-  data/*.json        chart data
-  feedback.json      host-owned; agents may read it directly
+  | tar -xzsession.json       id, title, status, allowedRoots, page order, meta
+  | tar -xzpages/*.mdx        one page per file; frontmatter title/order
+  | tar -xzassets/**          images, video, audio (served read-only)
+  | tar -xzdata/*.json        chart data
+  | tar -xzfeedback.json      host-owned; agents may read it directly
 ```
 
 Sessions live under `~/.plan-presenter/sessions/<id>` by default, or anywhere
@@ -119,13 +157,13 @@ exactly that batch.
 ## Security posture (deliberately minimal for now)
 
 - No authentication. Bind to `127.0.0.1` by default; `--lan` binds `0.0.0.0`
-  for viewing from other devices on a trusted network. Tokens can come later
-  behind HTTPS.
+  | tar -xzfor viewing from other devices on a trusted network. Tokens can come later
+  | tar -xzbehind HTTPS.
 - The only host-side side effect the UI can trigger is "open in file manager",
-  restricted to absolute paths inside the session's `allowedRoots`, resolved
-  through symlinks, spawned without a shell, and files are only _revealed_.
+  | tar -xzrestricted to absolute paths inside the session's `allowedRoots`, resolved
+  | tar -xzthrough symlinks, spawned without a shell, and files are only _revealed_.
 - MDX is agent-authored JavaScript that runs in the viewer's browser; treat
-  sessions as trusted content from your own agent.
+  | tar -xzsessions as trusted content from your own agent.
 
 ## Integrating into another app (e.g. t3code)
 
@@ -134,16 +172,17 @@ standalone server:
 
 - `@plan-presenter/protocol` is the contract (schemas, block ids, formatter).
 - `@plan-presenter/host` exports `SessionStore`, `compilePage`,
-  `SessionWatcher`, and `openInFileManager` independently of Hono; wrap them in
-  your own RPC.
+  | tar -xz`SessionWatcher`, and `openInFileManager` independently of Hono; wrap them in
+  | tar -xzyour own RPC.
 - `@plan-presenter/ui` exports `<PlanPresenter transport={…} sessionId={…}/>`
-  and the `Transport` interface; implement it over your existing connection.
+  | tar -xzand the `Transport` interface; implement it over your existing connection.
 - `formatFeedbackMarkdown` produces the text to inject into the agent's thread.
 
 See `plans/plan-presenter.md` for the t3code-specific notes.
 
 ## Status
 
-Greenfield. Core loop works end to end (host, UI, CLI, skill). Desktop shell
-is scaffolded on Electrobun 1.18 (Electrobun 2.0 moved to the "Hutch"
-toolchain; migrating is a follow-up). No auth yet.
+Core loop works end to end (host, UI, CLI, skill). CI builds the desktop app on
+five platforms and cross-compiles host binaries; releases are tag-driven.
+Desktop shell is on Electrobun 1.18 (2.0 moved to the "Hutch" toolchain;
+migrating is a follow-up). No auth yet.

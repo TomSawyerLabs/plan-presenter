@@ -5,12 +5,18 @@ on:
     branches: [master]
   pull_request:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      env:
+        description: Electrobun build environment for the desktop app (canary or stable)
+        type: string
+        default: canary
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -33,6 +39,38 @@ jobs:
           name: ui-dist
           path: packages/ui/dist/
           retention-days: 7
+
+  host-binaries:
+    name: Host binaries (all platforms, cross-compiled)
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: ui-dist
+          path: packages/ui/dist/
+      # `bun build --compile --target=...` embeds the UI and the Bun runtime;
+      # Bun downloads each target's runtime on first use.
+      - run: bun run packages/host/scripts/build-binaries.ts
+      - name: Smoke test the native binary
+        run: |
+          chmod +x packages/host/bin/pp-host-linux-x64
+          packages/host/bin/pp-host-linux-x64 --version
+          packages/host/bin/pp-host-linux-x64 --port 27499 --root "$RUNNER_TEMP/pp-sessions" &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:27499/api/health && break; sleep 0.5; done
+          curl -sf http://127.0.0.1:27499/ | grep -q '<div id="root">'
+          kill %1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pp-host-binaries
+          path: packages/host/bin/
+          retention-days: 7
+          if-no-files-found: error
 
   desktop:
     name: Desktop (${{ matrix.name }})
@@ -67,10 +105,10 @@ jobs:
 
       # Electrobun downloads its per-platform core binaries from its own GitHub
       # release on first use (~50 MB); nothing of ours is fetched from the network.
-      # `--env=canary` produces installers/archives in apps/desktop/artifacts.
+      # canary/stable builds produce installers/archives in apps/desktop/artifacts.
       - name: Build desktop app
         working-directory: apps/desktop
-        run: bunx electrobun build --env=canary
+        run: bunx electrobun build --env=${{ inputs.env || 'canary' }}
 
       - name: List artifacts
         shell: bash

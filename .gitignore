@@ -13,3 +13,5 @@ apps/desktop/dist/
 .plan-presenter/
 # example sessions get feedback written by the host when registered
 examples/**/feedback.json
+# compiled host binaries
+packages/host/bin/

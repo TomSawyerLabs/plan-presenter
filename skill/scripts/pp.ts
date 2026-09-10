@@ -3,6 +3,9 @@
  * pp - agent CLI for plan-presenter.
  *
  *   pp serve [--lan] [--port N]             ensure the host is running (spawns it detached)
+ *   pp stop                                 stop the host started by `pp serve`
+ *   pp update [--tag vX.Y.Z]                download the latest prebuilt host binary
+ *   pp version                              CLI, binary and running-host versions
  *   pp status [<session>]                   host health / session summary
  *   pp sessions                             list sessions
  *   pp new "<title>" [--id s] [--root DIR]... [--dir DIR]   create a session
@@ -15,14 +18,21 @@
  *   pp resolve <session> <id>...            mark items resolved
  *   pp close <session>                      close the session
  *   pp rm <session>                         delete (or unregister) a session
+ *
+ * Host resolution for `pp serve`: a repo checkout recorded in
+ * ~/.plan-presenter/config.json (dev), else the prebuilt binary in
+ * ~/.plan-presenter/bin, downloaded from GitHub Releases on first use.
  */
 
-import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
   api,
   ApiError,
+  binaryVersion,
   DEFAULT_PORT,
+  downloadHostBinary,
+  hostBinaryPath,
   hostUrl,
   lanUrl,
   loadConfig,
@@ -64,18 +74,46 @@ function usage(): string {
   return readFileSync(new URL(import.meta.url))
     .toString()
     .split("\n")
-    .slice(2, 18)
+    .slice(2, 22)
     .map((l) => l.replace(/^ \* ?/, ""))
     .join("\n");
 }
 
-async function healthy(): Promise<boolean> {
+async function healthy(): Promise<{ version: string } | null> {
   try {
-    await api("/api/health", { timeoutMs: 1500 });
-    return true;
+    return await api<{ version: string }>("/api/health", { timeoutMs: 1500 });
   } catch {
-    return false;
+    return null;
   }
+}
+
+function pidPath(): string {
+  return join(ppHome(), "host.pid");
+}
+
+/** How to launch the host: from a repo checkout (dev) or the prebuilt binary. */
+async function resolveHostCommand(): Promise<{
+  argv: string[];
+  cwd?: string;
+  env?: Record<string, string>;
+  source: string;
+}> {
+  const cfg = loadConfig();
+  const repoDir = str(flags.repo) ?? cfg.repoDir;
+  if (repoDir && existsSync(join(repoDir, "packages", "host", "src", "cli.ts"))) {
+    return {
+      argv: ["bun", "run", join(repoDir, "packages", "host", "src", "cli.ts")],
+      cwd: repoDir,
+      env: { PP_UI_DIR: join(repoDir, "packages", "ui", "dist") },
+      source: `repo ${repoDir}`,
+    };
+  }
+  const bin = hostBinaryPath();
+  if (!existsSync(bin)) {
+    out("no host found; downloading the prebuilt host binary…");
+    await downloadHostBinary(str(flags.tag) ?? "latest", (s) => process.stderr.write(`${s}\n`));
+  }
+  return { argv: [bin], source: `binary ${bin}` };
 }
 
 async function serve(): Promise<void> {
@@ -88,44 +126,27 @@ async function serve(): Promise<void> {
       out("note: --lan ignored because the host is already running; stop it and re-run to rebind");
     return;
   }
-  const repoDir = str(flags.repo) ?? cfg.repoDir;
-  if (!repoDir || !existsSync(join(repoDir, "packages", "host", "src", "cli.ts"))) {
-    die(
-      `plan-presenter repo not found (repoDir=${repoDir ?? "unset"}). Run the installer from the repo: bun run skill/scripts/install.ts`,
-    );
-  }
+  const launch = await resolveHostCommand();
   mkdirSync(ppHome(), { recursive: true });
   const log = openSync(join(ppHome(), "host.log"), "a");
   const root = cfg.root ?? join(ppHome(), "sessions");
-  const proc = Bun.spawn(
-    [
-      "bun",
-      "run",
-      join(repoDir, "packages", "host", "src", "cli.ts"),
-      "--port",
-      String(port),
-      "--host",
-      bind,
-      "--root",
-      root,
-    ],
-    {
-      cwd: repoDir,
-      stdout: log,
-      stderr: log,
-      stdin: "ignore",
-      detached: true,
-      env: { ...process.env, PP_UI_DIR: join(repoDir, "packages", "ui", "dist") },
-    },
-  );
+  const proc = Bun.spawn([...launch.argv, "--port", String(port), "--host", bind, "--root", root], {
+    cwd: launch.cwd,
+    stdout: log,
+    stderr: log,
+    stdin: "ignore",
+    detached: true,
+    env: { ...process.env, ...launch.env },
+  });
   proc.unref();
-  writeFileSync(join(ppHome(), "host.pid"), String(proc.pid));
-  saveConfig({ ...cfg, repoDir, port, bind, root });
+  writeFileSync(pidPath(), String(proc.pid));
+  saveConfig({ ...cfg, repoDir: str(flags.repo) ?? cfg.repoDir, port, bind, root });
   for (let i = 0; i < 50; i++) {
     await Bun.sleep(100);
-    if (await healthy()) {
+    const h = await healthy();
+    if (h) {
       out(
-        `host started at http://127.0.0.1:${port} (pid ${proc.pid}, log ${join(ppHome(), "host.log")})`,
+        `host ${h.version} started at http://127.0.0.1:${port} from ${launch.source} (pid ${proc.pid}, log ${join(ppHome(), "host.log")})`,
       );
       if (bind === "0.0.0.0") {
         const lan = await lanUrl(port);
@@ -135,6 +156,24 @@ async function serve(): Promise<void> {
     }
   }
   die(`host did not become healthy; see ${join(ppHome(), "host.log")}`);
+}
+
+async function stop(): Promise<void> {
+  const p = pidPath();
+  if (!existsSync(p)) {
+    if (await healthy())
+      die("a host is running but was not started by `pp serve`; stop it yourself");
+    return out("host not running");
+  }
+  const pid = Number(readFileSync(p, "utf8").trim());
+  try {
+    process.kill(pid);
+    out(`stopped host (pid ${pid})`);
+  } catch (e) {
+    out(`host pid ${pid} not running (${(e as Error).message})`);
+  }
+  rmSync(p, { force: true });
+  for (let i = 0; i < 20 && (await healthy()); i++) await Bun.sleep(100);
 }
 
 async function ensureHost(): Promise<void> {
@@ -182,18 +221,50 @@ async function main(): Promise<void> {
       await serve();
       return;
 
+    case "stop":
+      await stop();
+      return;
+
+    case "update": {
+      const running = await healthy();
+      if (running && existsSync(pidPath())) {
+        out("stopping the running host first…");
+        await stop();
+      }
+      const bin = await downloadHostBinary(str(flags.tag) ?? "latest", out);
+      out(`host binary version: ${(await binaryVersion(bin)) ?? "unknown"}`);
+      if (running) {
+        out("restarting host…");
+        await serve();
+      }
+      return;
+    }
+
+    case "version": {
+      const cfg = loadConfig();
+      out(`cli: ${resolve(import.meta.dir, "..")}`);
+      out(`repo: ${cfg.repoDir ?? "(none)"}`);
+      const bin = hostBinaryPath();
+      out(
+        `binary: ${existsSync(bin) ? `${bin} (${(await binaryVersion(bin)) ?? "?"})` : "(not downloaded)"}`,
+      );
+      const h = await healthy();
+      out(`running host: ${h ? `${h.version} at ${hostUrl()}` : "none"}`);
+      return;
+    }
+
     case "status": {
       if (args[1]) {
         const s = await api<SessionSummary>(`/api/sessions/${encodeURIComponent(args[1])}`);
         out(summarise(s));
       } else {
-        const ok = await healthy();
+        const h = await healthy();
         out(
-          ok
-            ? `host OK at ${hostUrl()}`
+          h
+            ? `host ${h.version} OK at ${hostUrl()}`
             : `host NOT running (expected ${hostUrl()}). Run: pp serve`,
         );
-        if (!ok) process.exit(2);
+        if (!h) process.exit(2);
       }
       return;
     }

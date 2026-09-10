@@ -159,3 +159,75 @@ export function parseArgv(argv: string[]): {
 export function str(v: string | boolean | undefined): string | undefined {
   return typeof v === "string" ? v : undefined;
 }
+
+// ---------------------------------------------------------------------------
+// Prebuilt host binaries (GitHub Releases)
+// ---------------------------------------------------------------------------
+
+export const REPO = "TomSawyerLabs/plan-presenter";
+
+/** `linux-x64`, `linux-arm64`, `darwin-arm64`, `darwin-x64`, `windows-x64`. */
+export function platformKey(): string {
+  const os =
+    process.platform === "win32" ? "windows" : process.platform === "darwin" ? "darwin" : "linux";
+  const arch = process.arch === "arm64" ? "arm64" : "x64";
+  return `${os}-${arch}`;
+}
+
+export function hostBinaryName(): string {
+  return `pp-host-${platformKey()}${process.platform === "win32" ? ".exe" : ""}`;
+}
+
+export function hostBinaryPath(): string {
+  return join(ppHome(), "bin", hostBinaryName());
+}
+
+export function hostBinaryUrl(tag = "latest"): string {
+  const name = hostBinaryName();
+  return tag === "latest"
+    ? `https://github.com/${REPO}/releases/latest/download/${name}`
+    : `https://github.com/${REPO}/releases/download/${tag}/${name}`;
+}
+
+/** Download the host binary for this platform into ~/.plan-presenter/bin (atomic replace). */
+export async function downloadHostBinary(
+  tag = "latest",
+  log: (s: string) => void = () => {},
+): Promise<string> {
+  const dest = hostBinaryPath();
+  mkdirSync(dirname(dest), { recursive: true });
+  const url = hostBinaryUrl(tag);
+  log(`downloading ${url}`);
+  const res = await fetch(url, { redirect: "follow" });
+  if (!res.ok) {
+    throw new Error(
+      `download failed: ${res.status} ${res.statusText} for ${url}` +
+        (res.status === 404 ? " (no release for this platform yet?)" : ""),
+    );
+  }
+  const tmp = `${dest}.${process.pid}.download`;
+  await Bun.write(tmp, res);
+  const { renameSync, chmodSync, rmSync } = await import("node:fs");
+  try {
+    if (existsSync(dest)) rmSync(dest);
+    renameSync(tmp, dest);
+  } catch (e) {
+    rmSync(tmp, { force: true });
+    throw new Error(`could not replace ${dest} (is the host running? try: pp stop)`, { cause: e });
+  }
+  if (process.platform !== "win32") chmodSync(dest, 0o755);
+  log(`installed ${dest}`);
+  return dest;
+}
+
+/** Run `<bin> --version` and return the printed version, or null. */
+export async function binaryVersion(bin: string): Promise<string | null> {
+  try {
+    const proc = Bun.spawn([bin, "--version"], { stdout: "pipe", stderr: "ignore" });
+    const text = (await new Response(proc.stdout).text()).trim();
+    await proc.exited;
+    return text || null;
+  } catch {
+    return null;
+  }
+}

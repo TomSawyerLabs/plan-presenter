@@ -10,8 +10,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { createBunWebSocket } from "hono/bun";
 import type { ServerWebSocket } from "bun";
-import { existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import {
   CreateFeedback,
   CreateReply,
@@ -26,12 +25,16 @@ import { z } from "zod";
 import { openInFileManager, OpenRefused } from "./open.ts";
 import { Conflict, NotFound, SessionStore } from "./store.ts";
 import { SessionWatcher } from "./watcher.ts";
+import { uiFilesFromDir, type UiFiles } from "./ui-files.ts";
+import pkg from "../package.json" with { type: "json" };
 
-export const HOST_VERSION = "0.0.0";
+export const HOST_VERSION: string = pkg.version;
 
 export interface HostOptions {
   /** Directory holding session folders + registry. */
   root: string;
+  /** Built UI files (embedded or on disk). Takes precedence over `uiDir`. */
+  ui?: UiFiles | null;
   /** Built UI directory (contains index.html). Optional in dev (Vite serves it). */
   uiDir?: string;
   /** Called for every live event; used by embedders that want their own transport. */
@@ -304,19 +307,14 @@ export async function createHost(opts: HostOptions): Promise<Host> {
   );
 
   // -------------------------------------------------------------- static UI
-  if (opts.uiDir && existsSync(join(opts.uiDir, "index.html"))) {
-    const uiDir = resolve(opts.uiDir);
-    app.get("/*", async (c) => {
+  const ui = opts.ui ?? (opts.uiDir ? uiFilesFromDir(opts.uiDir) : null);
+  if (ui) {
+    app.get("/*", (c) => {
       const url = new URL(c.req.url);
       const rel = decodeURIComponent(url.pathname).replace(/^\/+/, "");
-      const candidate = resolve(uiDir, rel);
-      if (
-        rel &&
-        candidate.startsWith(uiDir) &&
-        existsSync(candidate) &&
-        (await Bun.file(candidate).exists())
-      ) {
-        const f = Bun.file(candidate);
+      const f = rel ? ui.get(rel) : null;
+      if (f) {
+        // Vite fingerprints everything under assets/; index.html must stay fresh.
         const immutable = rel.startsWith("assets/");
         return new Response(f, {
           headers: {
@@ -325,7 +323,8 @@ export async function createHost(opts: HostOptions): Promise<Host> {
           },
         });
       }
-      return new Response(Bun.file(join(uiDir, "index.html")), {
+      // SPA fallback (hash routing, so any path serves the shell).
+      return new Response(ui.get("index.html"), {
         headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" },
       });
     });
