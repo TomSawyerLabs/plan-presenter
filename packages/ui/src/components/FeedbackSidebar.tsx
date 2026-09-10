@@ -19,10 +19,12 @@ export function FeedbackSidebar({ focusedId, onFocus }: FeedbackSidebarProps) {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState<number | null>(null);
 
-  const pending = feedback.filter((f) => f.batch === null);
+  // System-reported render errors are for the agent, not the human.
+  const human = useMemo(() => feedback.filter((f) => f.author !== "system"), [feedback]);
+  const pending = human.filter((f) => f.batch === null);
   const visible = useMemo(
     () =>
-      feedback
+      human
         .filter((f) =>
           filter === "all"
             ? true
@@ -31,7 +33,7 @@ export function FeedbackSidebar({ focusedId, onFocus }: FeedbackSidebarProps) {
               : f.status === "resolved",
         )
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
-    [feedback, filter],
+    [human, filter],
   );
 
   const byPage = useMemo(() => {
@@ -46,6 +48,8 @@ export function FeedbackSidebar({ focusedId, onFocus }: FeedbackSidebarProps) {
       const r = await send();
       setSent(r.batch);
       setTimeout(() => setSent(null), 4000);
+    } catch {
+      /* shown by the session notice */
     } finally {
       setSending(false);
     }
@@ -57,7 +61,7 @@ export function FeedbackSidebar({ focusedId, onFocus }: FeedbackSidebarProps) {
     <aside className="pp-sidebar">
       <div className="pp-sidebar-head">
         <strong>Feedback</strong>
-        <span className="pp-muted">{feedback.length}</span>
+        <span className="pp-muted">{human.length}</span>
         <span className="pp-spacer" />
         <div className="pp-seg" role="radiogroup">
           {(["all", "open", "resolved"] as const).map((f) => (
@@ -153,7 +157,11 @@ function FeedbackCard({
   const resolved = item.status === "resolved";
   const sendReply = async () => {
     if (!replyText.trim()) return;
-    await reply(item.id, replyText.trim());
+    try {
+      await reply(item.id, replyText.trim());
+    } catch {
+      return; // the session notice shows the failure; keep the text so nothing is lost
+    }
     setReplyText("");
     setReplying(false);
   };
@@ -229,7 +237,9 @@ function FeedbackCard({
             <button
               type="button"
               className="pp-link-button"
-              onClick={() => updateFeedback(item.id, { status: resolved ? "open" : "resolved" })}
+              onClick={() =>
+                updateFeedback(item.id, { status: resolved ? "open" : "resolved" }).catch(() => {})
+              }
             >
               {resolved ? "Reopen" : "Resolve"}
             </button>
@@ -237,7 +247,7 @@ function FeedbackCard({
               <button
                 type="button"
                 className="pp-link-button pp-danger"
-                onClick={() => deleteFeedback(item.id)}
+                onClick={() => deleteFeedback(item.id).catch(() => {})}
               >
                 Delete
               </button>

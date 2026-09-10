@@ -23,6 +23,7 @@ export const KIND_LABEL: Record<FeedbackKind, string> = {
   approve: "Approve",
   reject: "Reject",
   answer: "Answer",
+  error: "Render error",
 };
 
 export const KIND_ICON: Record<FeedbackKind, string> = {
@@ -33,6 +34,7 @@ export const KIND_ICON: Record<FeedbackKind, string> = {
   approve: "👍",
   reject: "👎",
   answer: "🗳️",
+  error: "⚠️",
 };
 
 const KINDS: FeedbackKind[] = ["comment", "change", "question", "request", "approve", "reject"];
@@ -133,7 +135,11 @@ export function FeedbackComposer({
           if ((e.metaKey || e.ctrlKey) && e.key === "Enter") void submit();
         }}
       />
-      {err && <div className="pp-status-err">{err}</div>}
+      {err && (
+        <div className="pp-status-err" role="alert">
+          Not saved: {err}. Your text is kept; try again.
+        </div>
+      )}
       <div className="pp-row pp-composer-actions">
         <button
           type="button"

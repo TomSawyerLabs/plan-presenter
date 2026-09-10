@@ -54,3 +54,24 @@ const TYPE_PREFIX: Record<string, string> = {
 export const BLOCK_ATTR = "data-pp-block";
 export const BLOCK_TYPE_ATTR = "data-pp-type";
 export const BLOCK_LINE_ATTR = "data-pp-line";
+
+/**
+ * Components the UI provides to pages. The host uses this to flag unknown
+ * capitalised JSX names at compile time; the UI has a test asserting its
+ * component map covers exactly this list.
+ */
+export const KNOWN_COMPONENTS = [
+  "Chart",
+  "Mermaid",
+  "Folder",
+  "Question",
+  "Callout",
+  "Section",
+  "Columns",
+  "Column",
+  "Figure",
+  "Stat",
+  "Video",
+  "Audio",
+  "Image",
+] as const;

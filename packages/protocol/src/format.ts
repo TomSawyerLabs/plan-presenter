@@ -20,6 +20,7 @@ const KIND_VERB: Record<Feedback["kind"], string> = {
   approve: "APPROVED",
   reject: "REJECTED",
   answer: "ANSWER",
+  error: "RENDER ERROR",
 };
 
 export function formatFeedbackMarkdown(
@@ -61,6 +62,15 @@ export function formatFeedbackMarkdown(
       const status = f.status !== "open" ? ` [${f.status}]` : "";
       lines.push(`### ${KIND_VERB[f.kind]} · ${where} · id ${f.id}${status}`);
       if (f.anchor.block?.excerpt) lines.push(`Block: "${f.anchor.block.excerpt}"`);
+      if (f.kind === "error" && f.data && typeof f.data === "object") {
+        const d = f.data as { source?: string; detail?: string | null; count?: number };
+        lines.push(
+          `Source: ${d.source ?? "unknown"}${d.count && d.count > 1 ? ` (seen ${d.count}x)` : ""}`,
+        );
+        lines.push("", indent(f.body), "");
+        if (d.detail) lines.push("```", d.detail.trim(), "```", "");
+        continue;
+      }
       if (f.anchor.selection) lines.push(`Selected text: "${f.anchor.selection}"`);
       if (f.kind === "answer" && f.data && typeof f.data === "object") {
         const d = f.data as { selected?: string[]; text?: string };

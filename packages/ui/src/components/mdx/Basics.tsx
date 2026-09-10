@@ -10,7 +10,9 @@ import type {
   ReactNode,
   SourceHTMLAttributes,
 } from "react";
+import { useState, type SyntheticEvent } from "react";
 import { useSessionOptional } from "../../state.tsx";
+import { blockIdOf, RenderProblem } from "../RenderProblem.tsx";
 import { hrefToPath, isLocalPathHref } from "./Folder.tsx";
 import { Mermaid } from "./Mermaid.tsx";
 
@@ -33,19 +35,54 @@ export function useResolveUrl() {
   };
 }
 
+/** Media that failed to load reports the missing asset and shows a placeholder. */
+function useAssetError(kind: string, src: string | undefined) {
+  const [failed, setFailed] = useState<{ blockId: string | null } | null>(null);
+  const onError = (e: SyntheticEvent<Element>) =>
+    setFailed({ blockId: blockIdOf(e.currentTarget) });
+  const problem = failed ? (
+    <RenderProblem
+      what={kind}
+      source="asset"
+      message={`${kind} failed to load: ${src ?? "(no src)"}`}
+      blockId={failed.blockId}
+      inline={kind === "image"}
+    />
+  ) : null;
+  return { onError, problem };
+}
+
 export function Img(props: ImgHTMLAttributes<HTMLImageElement>) {
   const resolve = useResolveUrl();
-  return <img {...props} src={resolve(props.src)} loading="lazy" />;
+  const { onError, problem } = useAssetError("image", props.src);
+  return problem ?? <img {...props} src={resolve(props.src)} loading="lazy" onError={onError} />;
 }
 
 export function Video(props: MediaHTMLAttributes<HTMLVideoElement> & { src?: string } & DataAttrs) {
   const resolve = useResolveUrl();
-  return <video controls playsInline {...props} src={resolve(props.src)} className="pp-media" />;
+  const { onError, problem } = useAssetError("video", props.src);
+  return (
+    problem ?? (
+      <video
+        controls
+        playsInline
+        {...props}
+        src={resolve(props.src)}
+        className="pp-media"
+        onError={onError}
+      />
+    )
+  );
 }
 
 export function Audio(props: MediaHTMLAttributes<HTMLAudioElement> & { src?: string } & DataAttrs) {
   const resolve = useResolveUrl();
-  return <audio controls {...props} src={resolve(props.src)} className="pp-media" />;
+  const { onError, problem } = useAssetError("audio", props.src);
+  return (
+    problem ?? (
+      <audio controls {...props} src={resolve(props.src)} className="pp-media" onError={onError} />
+    )
+  );
 }
 
 export function Source(props: SourceHTMLAttributes<HTMLSourceElement>) {
@@ -90,9 +127,12 @@ export function Anchor(props: AnchorHTMLAttributes<HTMLAnchorElement>) {
 
 /** ```mermaid fences render as diagrams; everything else is a plain code block. */
 export function Pre(props: { children?: ReactNode } & Record<string, unknown>) {
-  const child = props.children as { props?: { className?: string; children?: string } } | undefined;
+  const child = props.children as
+    | { props?: { className?: string; children?: string } & Record<string, unknown> }
+    | undefined;
   const cls = child?.props?.className ?? "";
-  const data = pickData(props);
+  // remark puts the block attributes on the inner <code>, not the <pre>.
+  const data = { ...pickData(child?.props ?? {}), ...pickData(props) };
   if (/language-mermaid\b/.test(cls) && typeof child?.props?.children === "string") {
     return <Mermaid chart={child.props.children} {...(data as DataAttrs)} />;
   }

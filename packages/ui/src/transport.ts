@@ -12,6 +12,7 @@ import type {
   Feedback,
   LiveEvent,
   SessionSummary,
+  ReportRenderError,
   UpdateFeedback,
   UpdateSession,
 } from "@plan-presenter/protocol";
@@ -29,6 +30,8 @@ export interface Transport {
   /** "Send to agent": batch all pending feedback. */
   send(id: string): Promise<{ batch: number; items: Feedback[] }>;
   openPath(id: string, path: string): Promise<{ action: string; path: string }>;
+  /** Report a viewer-side render failure; the host forwards it to the agent. */
+  reportError(id: string, input: ReportRenderError): Promise<void>;
   /** URL the browser can load session-relative files from (assets, data). */
   fileUrl(id: string, relPath: string): string;
   /** Subscribe to live events. Returns an unsubscribe function. */
@@ -36,6 +39,10 @@ export interface Transport {
   /** Connection status for the status pill. */
   onStatus(listener: (connected: boolean) => void): () => void;
 }
+
+/** Health poll cadence while connected, and how long a poll may take. */
+const HEARTBEAT_MS = 4_000;
+const HEARTBEAT_TIMEOUT_MS = 2_500;
 
 export class TransportError extends Error {
   constructor(
@@ -60,16 +67,28 @@ export class HttpTransport implements Transport {
   private connected = false;
   private retry = 500;
   private closed = false;
+  private heartbeat: ReturnType<typeof setInterval> | null = null;
+  private onVisible = () => {
+    if (document.visibilityState === "visible") void this.checkHealth();
+  };
 
   constructor(opts: HttpTransportOptions = {}) {
     this.base = (opts.baseUrl ?? "").replace(/\/$/, "");
   }
 
   private async req<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetch(`${this.base}${path}`, {
-      ...init,
-      headers: { "content-type": "application/json", ...init?.headers },
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${this.base}${path}`, {
+        ...init,
+        headers: { "content-type": "application/json", ...init?.headers },
+      });
+    } catch (err) {
+      // Network-level failure (host down, DNS, CORS): status 0 so callers can
+      // tell "unreachable" apart from an application error.
+      this.setConnected(false);
+      throw new TransportError(`the host cannot be reached (${(err as Error).message})`, 0);
+    }
     if (!res.ok) {
       let msg = `${res.status} ${res.statusText}`;
       try {
@@ -134,6 +153,12 @@ export class HttpTransport implements Transport {
       body: JSON.stringify({ sessionId: id, path }),
     });
   }
+  async reportError(id: string, input: ReportRenderError) {
+    await this.req(`/api/sessions/${enc(id)}/errors`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  }
   fileUrl(id: string, relPath: string) {
     const clean = relPath.replace(/^\.?\//, "");
     return `${this.base}/api/sessions/${enc(id)}/files/${clean.split("/").map(enc).join("/")}`;
@@ -166,6 +191,38 @@ export class HttpTransport implements Transport {
     for (const l of this.statusListeners) l(c);
   }
 
+  /**
+   * A crashed host closes the socket at once, but a hung one does not. Poll
+   * /api/health while connected so "dead backend" shows within a few seconds;
+   * a failed check drops the socket, which triggers the reconnect loop.
+   */
+  private startHeartbeat() {
+    this.stopHeartbeat();
+    this.heartbeat = setInterval(() => void this.checkHealth(), HEARTBEAT_MS);
+    document.addEventListener("visibilitychange", this.onVisible);
+  }
+
+  private stopHeartbeat() {
+    if (this.heartbeat) clearInterval(this.heartbeat);
+    this.heartbeat = null;
+    document.removeEventListener("visibilitychange", this.onVisible);
+  }
+
+  async checkHealth(): Promise<boolean> {
+    try {
+      const res = await fetch(`${this.base}/api/health`, {
+        signal: AbortSignal.timeout(HEARTBEAT_TIMEOUT_MS),
+        cache: "no-store",
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      return true;
+    } catch {
+      this.setConnected(false);
+      this.ws?.close();
+      return false;
+    }
+  }
+
   private ensureSocket() {
     if (this.ws || this.closed) return;
     const wsBase = this.base
@@ -176,6 +233,7 @@ export class HttpTransport implements Transport {
     ws.onopen = () => {
       this.retry = 500;
       this.setConnected(true);
+      this.startHeartbeat();
     };
     ws.onmessage = (ev) => {
       try {
@@ -187,10 +245,11 @@ export class HttpTransport implements Transport {
     };
     ws.onclose = () => {
       this.ws = null;
+      this.stopHeartbeat();
       this.setConnected(false);
       if (this.closed) return;
       const delay = this.retry;
-      this.retry = Math.min(this.retry * 2, 10_000);
+      this.retry = Math.min(this.retry * 2, 4_000);
       setTimeout(() => this.ensureSocket(), delay);
     };
     ws.onerror = () => ws.close();

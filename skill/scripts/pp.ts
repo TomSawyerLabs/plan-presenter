@@ -13,6 +13,7 @@
  *   pp open <session>                       open the UI in the host machine's browser
  *   pp review <session> [--open]            mark awaiting-review (asks the human to look)
  *   pp wait <session> [--timeout 9m] [--any] block until the human sends feedback; prints it
+ *   pp errors <session> [--all]             open render errors (compile/mermaid/chart/asset)
  *   pp feedback <session> [--open|--batch N|--since N|--json]   print feedback
  *   pp reply <session> <id> "<text>"        reply to a feedback item (marks it acknowledged)
  *   pp resolve <session> <id>...            mark items resolved
@@ -74,7 +75,7 @@ function usage(): string {
   return readFileSync(new URL(import.meta.url))
     .toString()
     .split("\n")
-    .slice(2, 22)
+    .slice(2, 23)
     .map((l) => l.replace(/^ \* ?/, ""))
     .join("\n");
 }
@@ -339,10 +340,14 @@ async function main(): Promise<void> {
       const pageId = need(2, "pageId");
       const file = str(flags.file);
       const source = file ? readFileSync(file, "utf8") : await Bun.stdin.text();
-      await api(`/api/sessions/${encodeURIComponent(id)}/pages/${encodeURIComponent(pageId)}`, {
-        method: "PUT",
-        body: JSON.stringify({ source }),
-      });
+      const page = await api<{ error: string | null }>(
+        `/api/sessions/${encodeURIComponent(id)}/pages/${encodeURIComponent(pageId)}`,
+        { method: "PUT", body: JSON.stringify({ source }) },
+      );
+      if (page.error) {
+        out(`compile error in ${pageId}: ${page.error}`);
+        process.exit(4);
+      }
       out(`wrote page ${pageId}: ${sessionUrl(id, pageId)}`);
       return;
     }
@@ -359,6 +364,21 @@ async function main(): Promise<void> {
     case "review": {
       await ensureHost();
       const id = need(1, "session");
+      await api(`/api/sessions/${encodeURIComponent(id)}`); // compiles pages; see "errors"
+      const errors = await api<unknown[]>(
+        `/api/sessions/${encodeURIComponent(id)}/feedback?kind=error&status=open`,
+      );
+      if (errors.length && !flags.force) {
+        out(
+          await api<string>(
+            `/api/sessions/${encodeURIComponent(id)}/feedback?kind=error&status=open&format=md`,
+          ),
+        );
+        die(
+          `${errors.length} render error(s) are open; fix them before asking for review (or pass --force)`,
+          4,
+        );
+      }
       const s = await api<SessionSummary>(`/api/sessions/${encodeURIComponent(id)}`, {
         method: "PATCH",
         body: JSON.stringify({ status: "awaiting-review" }),
@@ -378,6 +398,18 @@ async function main(): Promise<void> {
       const any = !!flags.any;
       const deadline = Date.now() + total;
       const before = await api<SessionSummary>(`/api/sessions/${encodeURIComponent(id)}`);
+      // Render errors already waiting? Return them right away.
+      const openErrors = await api<unknown[]>(
+        `/api/sessions/${encodeURIComponent(id)}/feedback?kind=error&status=open`,
+      );
+      if (openErrors.length) {
+        out(
+          await api<string>(
+            `/api/sessions/${encodeURIComponent(id)}/feedback?kind=error&status=open&format=md`,
+          ),
+        );
+        return;
+      }
       process.stderr.write(
         `waiting for feedback on "${before.title}" (${sessionUrl(id)}) up to ${Math.round(total / 1000)}s…\n`,
       );
@@ -389,9 +421,11 @@ async function main(): Promise<void> {
         );
         if (!r.timedOut && r.event) {
           const q =
-            r.event.type === "feedback.batch" && r.event.batch
-              ? `?batch=${r.event.batch}&format=md`
-              : "?format=md";
+            r.event.type === "render.error"
+              ? "?kind=error&status=open&format=md"
+              : r.event.type === "feedback.batch" && r.event.batch
+                ? `?batch=${r.event.batch}&format=md`
+                : "?format=md";
           out(await api<string>(`/api/sessions/${encodeURIComponent(id)}/feedback${q}`));
           return;
         }
@@ -400,6 +434,17 @@ async function main(): Promise<void> {
         "timed out; re-run `pp wait` to keep waiting, or `pp feedback` to see what's there.\n",
       );
       process.exit(3);
+    }
+
+    case "errors": {
+      await ensureHost();
+      const id = need(1, "session");
+      // Fetching the summary compiles every page, so errors are current even if
+      // the file watcher missed a write.
+      await api(`/api/sessions/${encodeURIComponent(id)}`);
+      const q = flags.all ? "kind=error" : "kind=error&status=open";
+      out(await api<string>(`/api/sessions/${encodeURIComponent(id)}/feedback?${q}&format=md`));
+      return;
     }
 
     case "feedback": {

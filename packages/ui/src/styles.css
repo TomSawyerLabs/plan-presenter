@@ -879,3 +879,26 @@ textarea {
 .pp-session-card:hover {
   border-color: var(--pp-accent);
 }
+
+/* ---------------------------------------------------------- render problems */
+.pp-render-problem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  margin: 0.8em 0;
+  border: 1px dashed var(--pp-warn);
+  border-radius: var(--pp-radius);
+  background: color-mix(in srgb, var(--pp-warn) 8%, transparent);
+  color: var(--pp-text-secondary);
+  font-size: 0.92rem;
+}
+.pp-render-problem-inline {
+  display: inline-flex;
+  margin: 0;
+  padding: 2px 8px;
+  font-size: 0.85rem;
+}
+.pp-banner-warn {
+  background: color-mix(in srgb, var(--pp-warn) 12%, transparent);
+}

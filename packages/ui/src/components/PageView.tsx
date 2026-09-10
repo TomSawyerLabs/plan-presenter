@@ -14,11 +14,68 @@ import { run } from "@mdx-js/mdx";
 import { MDXProvider, useMDXComponents } from "@mdx-js/react";
 import type { MDXContent } from "mdx/types";
 import * as runtime from "react/jsx-runtime";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  Component,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ErrorInfo,
+  type ReactNode,
+} from "react";
 import { BLOCK_ATTR, type BlockInfo, type Feedback } from "@plan-presenter/protocol";
 import { useSession } from "../state.tsx";
 import { mdxComponents } from "./mdx/index.ts";
 import { FeedbackComposer, type ComposerTarget } from "./FeedbackComposer.tsx";
+import { RenderProblem } from "./RenderProblem.tsx";
+
+/**
+ * Catches components that throw while rendering (e.g. an unknown component
+ * name in the MDX) so one bad block does not blank the page. Resets when the
+ * page content changes (`resetKey`).
+ */
+interface BoundaryProps {
+  resetKey: string;
+  children: ReactNode;
+}
+interface BoundaryState {
+  error: Error | null;
+  info: string | null;
+  /** The resetKey this error belongs to; a new key clears it. */
+  key: string;
+}
+
+class PageErrorBoundary extends Component<BoundaryProps, BoundaryState> {
+  override state: BoundaryState = { error: null, info: null, key: this.props.resetKey };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  static getDerivedStateFromProps(props: BoundaryProps, state: BoundaryState) {
+    return props.resetKey !== state.key ? { error: null, info: null, key: props.resetKey } : null;
+  }
+
+  override componentDidCatch(_error: Error, info: ErrorInfo) {
+    this.setState({ info: info.componentStack ?? null });
+  }
+
+  override render() {
+    if (this.state.error) {
+      return (
+        <RenderProblem
+          what="page"
+          source="component"
+          message={this.state.error.message}
+          detail={this.state.info}
+        />
+      );
+    }
+    return this.props.children;
+  }
+}
 
 interface Marker {
   blockId: string;
@@ -64,9 +121,37 @@ export function PageView({ onFocusFeedback, focusedBlockId }: PageViewProps) {
   const Content =
     page && evaluated && evaluated.key === `${page.id}:${page.hash}` ? evaluated.Content : null;
 
+  // Unknown component names get a placeholder so the rest of the page renders.
+  // The host already reported each one to the agent with its line number.
+  const unknownKey = (page?.unknownComponents ?? []).join(",");
+  const components = useMemo(() => {
+    const unknown = unknownKey ? unknownKey.split(",") : [];
+    if (unknown.length === 0) return mdxComponents;
+    const fallbacks = Object.fromEntries(
+      unknown.map((name) => [
+        name,
+        (props: Record<string, unknown>) => (
+          <RenderProblem
+            what={`<${name}> component`}
+            source="component"
+            message={`Unknown component <${name}>`}
+            blockId={(props["data-pp-block"] as string | undefined) ?? null}
+            silent
+          />
+        ),
+      ]),
+    );
+    return { ...mdxComponents, ...fallbacks };
+  }, [unknownKey]);
+
   const blocksById = useMemo(() => new Map((page?.blocks ?? []).map((b) => [b.id, b])), [page]);
+  // Human feedback only: answers live in their <Question>, render errors are
+  // for the agent (the block shows a placeholder instead).
   const pageFeedback = useMemo(
-    () => feedback.filter((f) => f.anchor.pageId === currentPageId && f.kind !== "answer"),
+    () =>
+      feedback.filter(
+        (f) => f.anchor.pageId === currentPageId && f.kind !== "answer" && f.author !== "system",
+      ),
     [feedback, currentPageId],
   );
 
@@ -210,14 +295,24 @@ export function PageView({ onFocusFeedback, focusedBlockId }: PageViewProps) {
         ))}
       </div>
       <div ref={containerRef} className="pp-page" onClick={onClick} onMouseUp={onMouseUp}>
-        {page.error && <pre className="pp-compile-error">Compile error: {page.error}</pre>}
-        {runError && <pre className="pp-compile-error">Runtime error: {runError}</pre>}
-        {Content && (
-          <MDXProvider components={mdxComponents}>
-            <article className="pp-article">
-              <Content />
-            </article>
-          </MDXProvider>
+        {page.error ? (
+          // The host already reported the compile error to the agent.
+          <div className="pp-render-problem" role="status">
+            <span aria-hidden="true">⚠️</span> This page couldn’t be built. The agent has been
+            notified.
+          </div>
+        ) : runError ? (
+          <RenderProblem what="page" source="runtime" message={runError} />
+        ) : (
+          Content && (
+            <MDXProvider components={components}>
+              <PageErrorBoundary resetKey={`${page.id}:${page.hash}`}>
+                <article className="pp-article">
+                  <Content />
+                </article>
+              </PageErrorBoundary>
+            </MDXProvider>
+          )
         )}
         {target && (
           <FeedbackComposer

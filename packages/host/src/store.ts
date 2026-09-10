@@ -23,11 +23,14 @@ import {
   CompiledPage,
   Feedback,
   FeedbackFile,
+  KNOWN_COMPONENTS,
   SessionManifest,
   type Anchor,
   type CreateFeedback,
   type CreateSession,
   type PageSummary,
+  type RenderErrorData,
+  type ReportRenderError,
   type SessionSummary,
   type UpdateFeedback,
   type UpdateSession,
@@ -58,13 +61,46 @@ function newId(prefix: string): string {
 async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
   const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
   await writeFile(tmp, JSON.stringify(value, null, 2) + "\n", "utf8");
-  await rename(tmp, path);
+  // Windows refuses to replace a file that another handle (watcher, AV, a
+  // reader) has open for a moment; retry briefly before giving up.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await rename(tmp, path);
+      return;
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if ((code === "EPERM" || code === "EBUSY" || code === "EACCES") && attempt < 8) {
+        await Bun.sleep(15 * (attempt + 1));
+        continue;
+      }
+      await rm(tmp, { force: true });
+      throw err;
+    }
+  }
 }
 
 export class SessionStore {
   readonly root: string;
   private registry: Registry = { external: {} };
   private compiled = new Map<string, CompiledPage>();
+  /** Per-session write chain: every read-modify-write of a session's files runs in turn. */
+  private chains = new Map<string, Promise<unknown>>();
+
+  /**
+   * Serialise mutations per session. Concurrent writers (viewer feedback,
+   * render-error reports, compile-time reports from `summary`) otherwise race
+   * on feedback.json and session.json: lost updates and EPERM on Windows.
+   * Not re-entrant: never call a locked method from inside another.
+   */
+  private locked<T>(id: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.chains.get(id) ?? Promise.resolve();
+    const next = prev.catch(() => undefined).then(fn);
+    this.chains.set(id, next);
+    void next.finally(() => {
+      if (this.chains.get(id) === next) this.chains.delete(id);
+    });
+    return next;
+  }
 
   constructor(root: string) {
     this.root = resolve(root);
@@ -172,7 +208,11 @@ export class SessionStore {
     return parsed;
   }
 
-  async updateSession(id: string, patch: UpdateSession): Promise<SessionManifest> {
+  updateSession(id: string, patch: UpdateSession): Promise<SessionManifest> {
+    return this.locked(id, () => this.applySessionPatch(id, patch));
+  }
+
+  private async applySessionPatch(id: string, patch: UpdateSession): Promise<SessionManifest> {
     const m = await this.readManifest(id);
     const next: SessionManifest = {
       ...m,
@@ -267,8 +307,39 @@ export class SessionStore {
       blocks: result.blocks,
       hash,
       error: result.error,
+      unknownComponents: result.unknownComponents.map((u) => u.name),
     };
     this.compiled.set(key, page);
+    // The content changed (or this is the first compile since start): every
+    // earlier render error for this page is stale. Viewer-side ones come back
+    // on the next render if they still apply. This does not depend on the file
+    // watcher, so a write the watcher missed still clears its errors here.
+    await this.resolveRenderErrors(id, pageId);
+    // Compile problems go straight to the agent as system feedback.
+    if (result.error) {
+      await this.reportRenderError(id, {
+        pageId,
+        blockId: null,
+        block: null,
+        targetId: null,
+        source: "compile",
+        message: result.error,
+        detail: null,
+      });
+    }
+    for (const u of result.unknownComponents) {
+      const block =
+        result.blocks.find((b) => b.line.start <= u.line && u.line <= b.line.end) ?? null;
+      await this.reportRenderError(id, {
+        pageId,
+        blockId: block?.id ?? null,
+        block,
+        targetId: null,
+        source: "component",
+        message: `Unknown component <${u.name}> (line ${u.line}). Available: ${KNOWN_COMPONENTS.join(", ")}`,
+        detail: null,
+      });
+    }
     return page;
   }
 
@@ -329,19 +400,144 @@ export class SessionStore {
 
   async listFeedback(
     id: string,
-    filter: { pageId?: string; status?: string; batch?: number; since?: number } = {},
+    filter: {
+      pageId?: string;
+      status?: string;
+      batch?: number;
+      since?: number;
+      kind?: string;
+      author?: string;
+    } = {},
   ): Promise<Feedback[]> {
     const file = await this.readFeedbackFile(id);
     return file.items.filter(
       (f) =>
         (filter.pageId === undefined || f.anchor.pageId === filter.pageId) &&
         (filter.status === undefined || f.status === filter.status) &&
+        (filter.kind === undefined || f.kind === filter.kind) &&
+        (filter.author === undefined || f.author === filter.author) &&
         (filter.batch === undefined || f.batch === filter.batch) &&
         (filter.since === undefined || (f.batch !== null && f.batch > filter.since)),
     );
   }
 
-  async createFeedback(id: string, input: CreateFeedback): Promise<Feedback> {
+  // --------------------------------------------------------- render errors
+
+  /**
+   * Called after a render error is created or reopened (not on repeats of an
+   * already-open error). The app uses it to wake `pp wait` and refresh the UI.
+   */
+  onRenderError: ((item: Feedback, created: boolean) => void) | null = null;
+
+  /**
+   * Record a rendering problem as system feedback. Deduplicated on
+   * page + block + source + message: a repeat bumps `data.count`; a repeat of
+   * a resolved error reopens it.
+   */
+  reportRenderError(
+    id: string,
+    input: ReportRenderError,
+  ): Promise<{ item: Feedback; created: boolean; reopened: boolean }> {
+    return this.locked(id, () => this.reportRenderErrorUnlocked(id, input));
+  }
+
+  private async reportRenderErrorUnlocked(
+    id: string,
+    input: ReportRenderError,
+  ): Promise<{ item: Feedback; created: boolean; reopened: boolean }> {
+    const file = await this.readFeedbackFile(id);
+    // Viewer reports carry only a block id; fill in the snapshot (lines, excerpt)
+    // from the compiled page so the agent gets a location.
+    if (!input.block && input.blockId) {
+      const cached = this.compiled.get(`${id}/${input.pageId}`);
+      input = { ...input, block: cached?.blocks.find((b) => b.id === input.blockId) ?? null };
+    }
+    const ts = now();
+    const existing = file.items.find(
+      (f) =>
+        f.author === "system" &&
+        f.kind === "error" &&
+        f.anchor.pageId === input.pageId &&
+        f.anchor.blockId === input.blockId &&
+        (f.data as RenderErrorData | undefined)?.source === input.source &&
+        f.body === input.message,
+    );
+    if (existing) {
+      const data = (existing.data as RenderErrorData | undefined) ?? {
+        source: input.source,
+        detail: null,
+        count: 0,
+      };
+      const reopened = existing.status === "resolved";
+      if (!existing.anchor.block && input.block) existing.anchor.block = input.block;
+      existing.data = { ...data, detail: input.detail ?? data.detail, count: data.count + 1 };
+      existing.status = "open";
+      existing.updatedAt = ts;
+      await this.writeFeedbackFile(id, file);
+      if (reopened) {
+        await this.touch(id);
+        this.onRenderError?.(existing, false);
+      }
+      return { item: existing, created: false, reopened };
+    }
+    const data: RenderErrorData = { source: input.source, detail: input.detail, count: 1 };
+    const item: Feedback = Feedback.parse({
+      id: newId("err"),
+      sessionId: id,
+      kind: "error",
+      status: "open",
+      author: "system",
+      anchor: {
+        pageId: input.pageId,
+        blockId: input.blockId,
+        block: input.block,
+        selection: null,
+        targetId: input.targetId,
+      },
+      body: input.message,
+      data,
+      createdAt: ts,
+      updatedAt: ts,
+      replies: [],
+      batch: null,
+    });
+    file.items.push(item);
+    await this.writeFeedbackFile(id, file);
+    await this.touch(id);
+    this.onRenderError?.(item, true);
+    return { item, created: true, reopened: false };
+  }
+
+  /** Resolve open render errors for a page (all sources, or only the given ones). */
+  resolveRenderErrors(id: string, pageId: string, sources?: string[]): Promise<number> {
+    return this.locked(id, () => this.resolveRenderErrorsUnlocked(id, pageId, sources));
+  }
+
+  private async resolveRenderErrorsUnlocked(
+    id: string,
+    pageId: string,
+    sources?: string[],
+  ): Promise<number> {
+    const file = await this.readFeedbackFile(id);
+    let n = 0;
+    for (const f of file.items) {
+      if (f.author !== "system" || f.kind !== "error" || f.status === "resolved") continue;
+      if (f.anchor.pageId !== pageId) continue;
+      const src = (f.data as RenderErrorData | undefined)?.source;
+      if (sources && (!src || !sources.includes(src))) continue;
+      f.status = "resolved";
+      f.updatedAt = now();
+      n++;
+    }
+    if (n > 0) await this.writeFeedbackFile(id, file);
+    return n;
+  }
+
+  createFeedback(id: string, input: CreateFeedback): Promise<Feedback> {
+    return this.locked(id, () => this.createFeedbackUnlocked(id, input));
+  }
+
+  private async createFeedbackUnlocked(id: string, input: CreateFeedback): Promise<Feedback> {
     const file = await this.readFeedbackFile(id);
     const ts = now();
     const item: Feedback = Feedback.parse({
@@ -364,7 +560,15 @@ export class SessionStore {
     return item;
   }
 
-  async updateFeedback(id: string, feedbackId: string, patch: UpdateFeedback): Promise<Feedback> {
+  updateFeedback(id: string, feedbackId: string, patch: UpdateFeedback): Promise<Feedback> {
+    return this.locked(id, () => this.updateFeedbackUnlocked(id, feedbackId, patch));
+  }
+
+  private async updateFeedbackUnlocked(
+    id: string,
+    feedbackId: string,
+    patch: UpdateFeedback,
+  ): Promise<Feedback> {
     const file = await this.readFeedbackFile(id);
     const item = file.items.find((f) => f.id === feedbackId);
     if (!item) throw new NotFound(`feedback ${feedbackId}`);
@@ -377,15 +581,26 @@ export class SessionStore {
     return item;
   }
 
-  async deleteFeedback(id: string, feedbackId: string): Promise<void> {
-    const file = await this.readFeedbackFile(id);
-    const idx = file.items.findIndex((f) => f.id === feedbackId);
-    if (idx < 0) throw new NotFound(`feedback ${feedbackId}`);
-    file.items.splice(idx, 1);
-    await this.writeFeedbackFile(id, file);
+  deleteFeedback(id: string, feedbackId: string): Promise<void> {
+    return this.locked(id, async () => {
+      const file = await this.readFeedbackFile(id);
+      const idx = file.items.findIndex((f) => f.id === feedbackId);
+      if (idx < 0) throw new NotFound(`feedback ${feedbackId}`);
+      file.items.splice(idx, 1);
+      await this.writeFeedbackFile(id, file);
+    });
   }
 
-  async addReply(
+  addReply(
+    id: string,
+    feedbackId: string,
+    author: "human" | "agent",
+    body: string,
+  ): Promise<Feedback> {
+    return this.locked(id, () => this.addReplyUnlocked(id, feedbackId, author, body));
+  }
+
+  private async addReplyUnlocked(
     id: string,
     feedbackId: string,
     author: "human" | "agent",
@@ -406,15 +621,19 @@ export class SessionStore {
    * "Send to agent": stamp every un-batched item with a new batch number and
    * flip the session to `reviewed`. Returns the batch number and its items.
    */
-  async sendBatch(id: string): Promise<{ batch: number; items: Feedback[] }> {
-    const file = await this.readFeedbackFile(id);
-    const pending = file.items.filter((f) => f.batch === null);
-    const batch = file.lastBatch + 1;
-    for (const f of pending) f.batch = batch;
-    file.lastBatch = batch;
-    await this.writeFeedbackFile(id, file);
-    await this.updateSession(id, { status: "reviewed" });
-    return { batch, items: pending };
+  sendBatch(id: string): Promise<{ batch: number; items: Feedback[] }> {
+    return this.locked(id, async () => {
+      const file = await this.readFeedbackFile(id);
+      // System-reported render errors reach the agent on their own; they are
+      // never part of a human batch.
+      const pending = file.items.filter((f) => f.batch === null && f.author !== "system");
+      const batch = file.lastBatch + 1;
+      for (const f of pending) f.batch = batch;
+      file.lastBatch = batch;
+      await this.writeFeedbackFile(id, file);
+      await this.applySessionPatch(id, { status: "reviewed" });
+      return { batch, items: pending };
+    });
   }
 
   private async touch(id: string): Promise<void> {

@@ -77,3 +77,36 @@ describe("formatFeedbackMarkdown", () => {
     expect(formatFeedbackMarkdown(session, [])).toContain("_No feedback items._");
   });
 });
+
+describe("formatFeedbackMarkdown render errors", () => {
+  test("shows source, count and the failing snippet", () => {
+    const items: Feedback[] = [
+      {
+        ...base,
+        id: "err_1",
+        kind: "error",
+        author: "system",
+        body: "Parse error on line 2",
+        data: { source: "mermaid", detail: "graph TD; A-->", count: 3 },
+        batch: null,
+        anchor: {
+          pageId: "01-overview",
+          blockId: "code-1",
+          block: {
+            id: "code-1",
+            type: "code",
+            line: { start: 20, end: 24 },
+            excerpt: "mermaid graph",
+          },
+          selection: null,
+          targetId: null,
+        },
+      },
+    ];
+    const md = formatFeedbackMarkdown(session, items);
+    expect(md).toContain("### RENDER ERROR · lines 20-24 (code) · id err_1");
+    expect(md).toContain("Source: mermaid (seen 3x)");
+    expect(md).toContain("> Parse error on line 2");
+    expect(md).toContain("```\ngraph TD; A-->\n```");
+  });
+});

@@ -132,3 +132,31 @@ describe("SessionStore", () => {
     await expect(store.assetPath(m.id, "assets")).rejects.toBeInstanceOf(NotFound);
   });
 });
+
+describe("SessionStore concurrency", () => {
+  test("parallel writers never lose updates", async () => {
+    const m = await store.createSession({ id: "c1", title: "T", allowedRoots: [], meta: {} });
+    const anchor = { pageId: "p", blockId: null, block: null, selection: null, targetId: null };
+    await Promise.all([
+      ...Array.from({ length: 25 }, (_, i) =>
+        store.createFeedback(m.id, { kind: "comment", anchor, body: `c${i}`, author: "human" }),
+      ),
+      ...Array.from({ length: 10 }, (_, i) =>
+        store.reportRenderError(m.id, {
+          pageId: "p",
+          blockId: `b${i}`,
+          block: null,
+          targetId: null,
+          source: "mermaid",
+          message: `m${i}`,
+          detail: null,
+        }),
+      ),
+      store.updateSession(m.id, { title: "T2" }),
+    ]);
+    const all = await store.listFeedback(m.id);
+    expect(all.filter((f) => f.kind === "comment").length).toBe(25);
+    expect(all.filter((f) => f.kind === "error").length).toBe(10);
+    expect((await store.readManifest(m.id)).title).toBe("T2");
+  });
+});

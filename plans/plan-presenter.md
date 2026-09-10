@@ -124,6 +124,22 @@ Designed so the UI + host packages can later be embedded natively in t3code.
   tool for anything containing a pipe.
 - **A host started before an upgrade keeps running old code.** `pp version` shows the
   running host's version; `pp stop` + `pp serve` picks up the new one.
+- **Concurrent writers race on feedback.json.** Viewer error reports, compile-time reports
+  from `summary()`, and human feedback all do read-modify-write; on Windows the losing
+  rename fails with EPERM. Fixed with a per-session promise chain (`SessionStore.locked`)
+  plus a short EPERM/EBUSY retry in `writeJsonAtomic`. Locked methods are not re-entrant:
+  internal callers use the `*Unlocked` variants.
+- **remark puts `hProperties` of a `code` node on the inner `<code>`**, not the `<pre>`; the
+  `Pre` override merges data attrs from the child. `RenderProblem` also resolves its block
+  from the DOM (`closest("[data-pp-block]")`) so placeholders are always located.
+- **MDX throws on unknown components before rendering anything** (`_missingMdxReference`),
+  so an error boundary alone would blank the page. The host detects unknown capitalised
+  JSX names at compile time (`KNOWN_COMPONENTS` in protocol) and the UI substitutes
+  placeholder components for them.
+- **Do not depend on the file watcher for correctness.** A write that lands before chokidar
+  is ready (right after host start) is missed. Render errors are therefore cleared on every
+  recompile with a new hash (any `getPage`), and `pp errors`/`pp review`/`pp wait` fetch the
+  session summary first, which compiles every page.
 
 ## Progress log
 
@@ -143,6 +159,13 @@ Designed so the UI + host packages can later be embedded natively in t3code.
   ci.yml with stable desktop env; GitHub Release with binaries + installers + skill tarball).
   Local binary smoke test OK. CI green with the new host-binaries job (all five targets,
   linux-x64 smoke-tested on the runner). Release workflow dispatched manually as a dry run: all build jobs green, release step skipped (no tag) as designed.
+- 2026-09-10: render errors -> agent (system feedback kind `error`; compile, component,
+  mermaid, chart, asset, runtime sources; auto-resolve on page change; `pp wait` wakes on
+  them; `pp review` refuses with open errors; `pp errors`). Human sees placeholders only.
+  Dead-host detection (4 s heartbeat), "lost connection" + "NOT saved" banners, text kept
+  on failure. Per-session write lock after an EPERM race surfaced in testing. Verified in
+  the browser end to end (placeholders, reports with line ranges, disconnect/reconnect,
+  retry saved).
 
 ## Open questions for the user
 
@@ -171,6 +194,8 @@ Designed so the UI + host packages can later be embedded natively in t3code.
   `packages/client-runtime/src/work-log/presentation.ts`. The preview feature is
   split across four dirs (`apps/desktop/src/preview`, `apps/server/src/mcp/toolkits/preview`,
   `apps/server/src/preview`, `apps/web/src/components/preview`); mirror that split.
+- Compile errors that are reported at write time never reach a viewer, so their agent
+  message is the only signal; consider also surfacing the count in `pp status`.
 - Agent-side hook: auto `pp wait` via a Stop hook (like bulletin-board's async
   rewake) so the agent resumes when feedback arrives without a blocking bash call.
 - Release workflow: tag -> build all platforms -> GitHub Release with installers; then let `pp serve` fetch a release instead of needing a checkout.

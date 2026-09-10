@@ -21,15 +21,27 @@ export interface SessionViewProps {
 }
 
 export function SessionView({ onBack }: SessionViewProps) {
-  const { session, connected, loading, error, currentPageId, setCurrentPage, feedback } =
-    useSession();
+  const {
+    session,
+    connected,
+    loading,
+    error,
+    currentPageId,
+    setCurrentPage,
+    feedback,
+    notice,
+    dismissNotice,
+  } = useSession();
   const [focusedRaw, setFocused] = useState<Feedback | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 900);
 
   // Focus only applies while its page is the current one.
   const focused = focusedRaw && focusedRaw.anchor.pageId === currentPageId ? focusedRaw : null;
 
-  const openCount = feedback.filter((f) => f.status !== "resolved" && f.kind !== "answer").length;
+  const openCount = feedback.filter(
+    (f) => f.status !== "resolved" && f.kind !== "answer" && f.author !== "system",
+  ).length;
+  const renderErrors = feedback.filter((f) => f.author === "system" && f.status !== "resolved");
 
   if (loading) return <div className="pp-empty">Loading…</div>;
   if (!session) return <div className="pp-empty">{error ?? "Session not found."}</div>;
@@ -69,7 +81,29 @@ export function SessionView({ onBack }: SessionViewProps) {
           <strong>Send to agent</strong>.
         </div>
       )}
+      {!connected && (
+        <div className="pp-banner pp-banner-err" role="alert">
+          <strong>Lost the connection to the host.</strong> Nothing you enter now is saved until it
+          comes back; feedback you already added is safe. Retrying…
+        </div>
+      )}
+      {notice && (
+        <div className="pp-banner pp-banner-err" role="alert">
+          <strong>{notice}</strong> Your text is still in the box; try again once the host is back.
+          <button type="button" className="pp-link-button" onClick={dismissNotice}>
+            Dismiss
+          </button>
+        </div>
+      )}
       {error && <div className="pp-banner pp-banner-err">{error}</div>}
+      {renderErrors.length > 0 && (
+        <div className="pp-banner pp-banner-warn" role="status">
+          {renderErrors.length === 1
+            ? "One part of this session couldn’t render."
+            : `${renderErrors.length} parts of this session couldn’t render.`}{" "}
+          The agent has been notified and will fix it; the page updates live.
+        </div>
+      )}
 
       {session.pageSummaries.length > 1 && (
         <nav className="pp-pages" aria-label="Pages">

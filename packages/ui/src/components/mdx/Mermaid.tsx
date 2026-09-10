@@ -4,6 +4,7 @@
  */
 
 import { useEffect, useId, useState } from "react";
+import { RenderProblem } from "../RenderProblem.tsx";
 import { isDarkMode } from "./palette.ts";
 
 export interface MermaidProps {
@@ -66,11 +67,14 @@ export function Mermaid(props: MermaidProps) {
   return (
     <figure className="pp-mermaid" data-pp-target={props.id} {...dataAttrs}>
       {error ? (
-        <pre className="pp-inline-error">
-          Mermaid error: {error}
-          {"\n\n"}
-          {source}
-        </pre>
+        <RenderProblem
+          what="diagram"
+          source="mermaid"
+          message={error}
+          detail={source}
+          blockId={props["data-pp-block"] ?? null}
+          targetId={props.id ?? null}
+        />
       ) : svg ? (
         <div className="pp-mermaid-svg" dangerouslySetInnerHTML={{ __html: svg }} />
       ) : (

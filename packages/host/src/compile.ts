@@ -21,6 +21,7 @@ import {
   BLOCK_LINE_ATTR,
   BLOCK_TYPE_ATTR,
   BlockIdAllocator,
+  KNOWN_COMPONENTS,
   normaliseExcerpt,
   type BlockInfo,
   type PageFrontmatter,
@@ -48,12 +49,35 @@ interface MdxJsxAttribute {
   value: string;
 }
 
+export interface UnknownComponent {
+  name: string;
+  line: number;
+}
+
 export interface CompileResult {
   code: string;
   blocks: BlockInfo[];
   frontmatter: PageFrontmatter;
   error: string | null;
   hash: string;
+  /** Capitalised JSX names that are not provided components (first use each). */
+  unknownComponents: UnknownComponent[];
+}
+
+const KNOWN = new Set<string>(KNOWN_COMPONENTS);
+
+/** Collect JSX element names that the UI does not provide (lowercase = HTML). */
+function remarkUnknownComponents(collector: UnknownComponent[]) {
+  return () => (tree: Root) => {
+    const seen = new Set<string>();
+    visit(tree, (node) => {
+      if (node.type !== "mdxJsxFlowElement" && node.type !== "mdxJsxTextElement") return;
+      const name = (node as unknown as { name?: string | null }).name;
+      if (!name || !/^[A-Z]/.test(name) || KNOWN.has(name) || seen.has(name)) return;
+      seen.add(name);
+      collector.push({ name, line: node.position?.start.line ?? 0 });
+    });
+  };
 }
 
 function remarkPpBlocks(collector: BlockInfo[]) {
@@ -134,6 +158,7 @@ export function hashSource(source: string): string {
 
 export async function compilePage(source: string, filename: string): Promise<CompileResult> {
   const blocks: BlockInfo[] = [];
+  const unknownComponents: UnknownComponent[] = [];
   const frontmatter = parseFrontmatter(source);
   const hash = hashSource(source);
   try {
@@ -148,15 +173,17 @@ export async function compilePage(source: string, filename: string): Promise<Com
           [remarkMdxFrontmatter, { name: "frontmatter" }],
           remarkGfm,
           remarkPpBlocks(blocks),
+          remarkUnknownComponents(unknownComponents),
         ],
       },
     );
-    return { code: String(file), blocks, frontmatter, error: null, hash };
+    return { code: String(file), blocks, frontmatter, error: null, hash, unknownComponents };
   } catch (err) {
     const message = formatCompileError(err);
     return {
       code: errorModule(message),
       blocks: [],
+      unknownComponents: [],
       frontmatter,
       error: message,
       hash,

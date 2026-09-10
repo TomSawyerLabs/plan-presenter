@@ -90,6 +90,8 @@ export function Question(props: QuestionProps) {
       setSaved(true);
       setEditing(false);
       setTimeout(() => setSaved(false), 2500);
+    } catch {
+      /* shown by the session notice; the answer stays in the form */
     } finally {
       setBusy(false);
     }

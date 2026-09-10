@@ -16,6 +16,7 @@ import {
   CreateReply,
   CreateSession,
   OpenPathRequest,
+  ReportRenderError,
   UpdateFeedback,
   UpdateSession,
   formatFeedbackMarkdown,
@@ -55,6 +56,8 @@ const FeedbackQuery = z.object({
   format: z.enum(["json", "md"]).optional(),
   pageId: z.string().optional(),
   status: z.string().optional(),
+  kind: z.string().optional(),
+  author: z.string().optional(),
   batch: z.coerce.number().int().optional(),
   since: z.coerce.number().int().optional(),
 });
@@ -83,7 +86,36 @@ export async function createHost(opts: HostOptions): Promise<Host> {
     opts.onEvent?.(event);
   };
 
-  const watcher = new SessionWatcher(store, broadcast);
+  // Render errors created/reopened by the store (compile errors, viewer
+  // reports) wake `pp wait` and refresh the UI.
+  store.onRenderError = (item, _created) => {
+    broadcast({
+      type: "render.error",
+      sessionId: item.sessionId,
+      pageId: item.anchor.pageId,
+      feedbackId: item.id,
+    });
+    broadcast({ type: "feedback.changed", sessionId: item.sessionId, feedbackId: item.id });
+  };
+
+  /**
+   * A page was written (agent edit): clear its render errors, then compile it
+   * right away so compile errors reach the agent without waiting for a viewer.
+   */
+  const onPageChanged = async (sessionId: string, pageId: string) => {
+    try {
+      const n = await store.resolveRenderErrors(sessionId, pageId);
+      if (n > 0) broadcast({ type: "feedback.changed", sessionId, feedbackId: "*" });
+      await store.getPage(sessionId, pageId);
+    } catch (err) {
+      console.warn(`recompile of ${sessionId}/${pageId} failed:`, (err as Error).message);
+    }
+  };
+
+  const watcher = new SessionWatcher(store, (event) => {
+    broadcast(event);
+    if (event.type === "page.changed") void onPageChanged(event.sessionId, event.pageId);
+  });
   watcher.start();
 
   const app = new Hono();
@@ -174,6 +206,7 @@ export async function createHost(opts: HostOptions): Promise<Host> {
     const { source } = PageBody.parse(await c.req.json());
     await store.writePage(id, pageId, source);
     broadcast({ type: "page.changed", sessionId: id, pageId });
+    await store.resolveRenderErrors(id, pageId);
     return c.json(await store.getPage(id, pageId));
   });
 
@@ -244,6 +277,14 @@ export async function createHost(opts: HostOptions): Promise<Host> {
     return c.json(item);
   });
 
+  /** Viewer-side render failure (mermaid, chart, asset, runtime, component). */
+  app.post("/api/sessions/:id/errors", async (c) => {
+    const id = c.req.param("id");
+    const body = ReportRenderError.parse(await c.req.json());
+    const r = await store.reportRenderError(id, body);
+    return c.json(r, r.created ? 201 : 200);
+  });
+
   /** Human pressed "Send to agent". */
   app.post("/api/sessions/:id/send", async (c) => {
     const id = c.req.param("id");
@@ -270,7 +311,11 @@ export async function createHost(opts: HostOptions): Promise<Host> {
         resolvePromise(null);
       }, timeout);
       const fn = (e: LiveEvent) => {
-        if (e.type === "feedback.batch" || (any && e.type === "feedback.changed")) {
+        if (
+          e.type === "feedback.batch" ||
+          e.type === "render.error" ||
+          (any && e.type === "feedback.changed")
+        ) {
           clearTimeout(timer);
           set.delete(fn);
           resolvePromise(e);

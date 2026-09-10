@@ -22,6 +22,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import { useSessionOptional } from "../../state.tsx";
+import { RenderProblem } from "../RenderProblem.tsx";
 import { isDarkMode, MAX_SERIES, seriesColor } from "./palette.ts";
 
 export interface ChartSeries {
@@ -242,7 +243,16 @@ export function Chart(props: ChartProps) {
 
   return (
     <figure className="pp-chart" data-pp-target={id} {...dataAttrs}>
-      {error && <pre className="pp-inline-error">{error}</pre>}
+      {error && (
+        <RenderProblem
+          what="chart"
+          source="chart"
+          message={error}
+          detail={isPath ? `data: ${dataKey}` : null}
+          blockId={props["data-pp-block"] ?? null}
+          targetId={id ?? null}
+        />
+      )}
       <div ref={plotRef} className="pp-chart-plot" />
       {prepared && (
         <div className="pp-chart-tools" data-pp-interactive="">

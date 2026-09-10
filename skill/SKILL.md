@@ -76,6 +76,26 @@ Inside a page:
 
 Answers arrive as `ANSWER · target #db` items in `pp wait` output.
 
+## Render errors come to you automatically
+
+Anything that fails to render is reported to you without the human doing
+anything: MDX compile errors (as soon as you save the file), Mermaid syntax
+errors, chart data problems, missing images/media, unknown component names,
+runtime errors. They arrive as `RENDER ERROR` items:
+
+- `$PP wait <id>` returns immediately with the open render errors (no "Send to
+  agent" needed), including the page path, line range, the source (`compile`,
+  `mermaid`, `chart`, `asset`, `component`, `runtime`) and the failing snippet.
+- `$PP review <id>` refuses (exit 4) while render errors are open, so the human
+  never gets a broken page. `--force` overrides.
+- `$PP page` prints a compile error and exits 4.
+- `$PP errors <id>` lists them any time (`--all` includes resolved).
+
+Fix the source and save; errors auto-resolve when the page compiles and renders
+cleanly again. The human only sees a short placeholder ("couldn't render this
+diagram; the agent has been notified"), never the error text, so do not wait
+for them to report it.
+
 ## Rules
 
 - One session per plan/thread; multiple pages for long material (`01-overview.mdx`,

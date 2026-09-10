@@ -145,6 +145,28 @@ the session's allowed roots; never executes anything), `<Callout>`, `<Section>`,
 `<Columns>`/`<Column>`, `<Figure>`, `<Stat>`, `<Video>`, `<Audio>`, plus plain
 GFM Markdown. Full reference: [`skill/reference/authoring.md`](skill/reference/authoring.md).
 
+## Render errors go to the agent, not the human
+
+Anything that fails to render is reported to the agent automatically as a
+system feedback item of kind `error`: MDX compile errors (the host compiles a
+page the moment it is written), unknown component names (flagged at compile
+time with their line; the viewer renders a placeholder so the rest of the page
+still shows), Mermaid syntax errors, chart data problems, missing images or
+media, and runtime errors in the viewer. `pp wait` returns them immediately,
+`pp review` refuses while any are open, `pp errors` lists them, and they
+resolve themselves when the page compiles and renders cleanly again. The human
+only sees "Couldn't render this diagram. The agent has been notified."
+
+## Nothing is silently lost
+
+Every feedback item is saved to the host the moment it is submitted; "Send to
+agent" only groups what is already saved into a batch. The UI polls the host
+every few seconds, so a crashed or hung host shows a full-width "lost the
+connection" banner within seconds, and any write that fails shows a "NOT
+saved" notice while keeping the text in place to retry. Server-side, writes to
+a session are serialised so concurrent reports and feedback cannot clobber
+each other.
+
 ## Feedback model
 
 Every block-level element gets a stable id (hash of its type + text) and a

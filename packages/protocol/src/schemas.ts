@@ -85,6 +85,12 @@ export const CompiledPage = z.object({
   hash: z.string(),
   /** Compile error, if any. `code` is then a fallback that renders the error. */
   error: z.string().nullable(),
+  /**
+   * Capitalised JSX names used in the page that are not provided components.
+   * The viewer renders placeholders for them; the host reports each as a
+   * render error so the page still displays instead of throwing.
+   */
+  unknownComponents: z.array(z.string()).default([]),
 });
 export type CompiledPage = z.infer<typeof CompiledPage>;
 
@@ -121,13 +127,15 @@ export const FeedbackKind = z.enum([
   "reject",
   /** Answer to an inline <Question> the agent posed in the page. */
   "answer",
+  /** Rendering problem reported by the host or the viewer (author "system"); goes to the agent. */
+  "error",
 ]);
 export type FeedbackKind = z.infer<typeof FeedbackKind>;
 
 export const FeedbackStatus = z.enum(["open", "acknowledged", "resolved"]);
 export type FeedbackStatus = z.infer<typeof FeedbackStatus>;
 
-export const Author = z.enum(["human", "agent"]);
+export const Author = z.enum(["human", "agent", "system"]);
 export type Author = z.infer<typeof Author>;
 
 /** Where on the page a feedback item is attached. `null` block = whole page. */
@@ -204,7 +212,7 @@ export const UpdateFeedback = z.object({
 export type UpdateFeedback = z.infer<typeof UpdateFeedback>;
 
 export const CreateReply = z.object({
-  author: Author,
+  author: z.enum(["human", "agent"]),
   body: z.string().min(1),
 });
 export type CreateReply = z.infer<typeof CreateReply>;
@@ -245,5 +253,52 @@ export const LiveEvent = z.discriminatedUnion("type", [
   z.object({ type: z.literal("asset.changed"), sessionId: SessionId, path: z.string() }),
   z.object({ type: z.literal("feedback.changed"), sessionId: SessionId, feedbackId: z.string() }),
   z.object({ type: z.literal("feedback.batch"), sessionId: SessionId, batch: z.number().int() }),
+  z.object({
+    type: z.literal("render.error"),
+    sessionId: SessionId,
+    pageId: PageId,
+    feedbackId: z.string(),
+  }),
 ]);
 export type LiveEvent = z.infer<typeof LiveEvent>;
+
+// ---------------------------------------------------------------------------
+// Render errors (host compile errors and viewer-side failures). Stored as
+// feedback items with author "system" and kind "error"; the agent sees them
+// in `pp wait` immediately, the human sees only a short placeholder.
+// ---------------------------------------------------------------------------
+
+export const RenderErrorSource = z.enum([
+  /** MDX failed to compile on the host. */
+  "compile",
+  /** The compiled module threw while evaluating in the viewer. */
+  "runtime",
+  /** A component threw while rendering (e.g. unknown component name). */
+  "component",
+  "mermaid",
+  "chart",
+  /** Image/video/audio/data file failed to load. */
+  "asset",
+]);
+export type RenderErrorSource = z.infer<typeof RenderErrorSource>;
+
+export const ReportRenderError = z.object({
+  pageId: PageId,
+  blockId: z.string().nullable().default(null),
+  block: BlockInfo.nullable().default(null),
+  targetId: z.string().nullable().default(null),
+  source: RenderErrorSource,
+  /** One line, what went wrong. */
+  message: z.string().min(1),
+  /** Longer context (stack, offending source), for the agent only. */
+  detail: z.string().nullable().default(null),
+});
+export type ReportRenderError = z.infer<typeof ReportRenderError>;
+
+/** Shape of `Feedback.data` for kind "error". */
+export interface RenderErrorData {
+  source: RenderErrorSource;
+  detail: string | null;
+  /** How many times the same error was reported. */
+  count: number;
+}
