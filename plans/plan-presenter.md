@@ -73,7 +73,8 @@ Designed so the UI + host packages can later be embedded natively in t3code.
 9. [x] README, example session, unit tests (17), end-to-end CLI exercise, browser check via t3code preview.
 10. [x] Launch check of the built desktop app (in-process host answered on 27411, UI bundled), demo session cleaned, committed in 5 commits, skill installed to `~/.claude/skills/plan-presenter`.
 11. [x] Publish to GitHub (TomSawyerLabs/plan-presenter) with CI building on all platforms.
-12. [ ] Next: release workflow (tag -> GitHub Release with installers), then Blacksmith runners.
+12. [x] Release path: cross-compiled host binaries with embedded UI, `pp serve` download fallback, tag-driven release workflow (verified locally; CI run for the binaries job in progress).
+13. [ ] Next: first tagged release (user pushes `v0.1.0`), then Blacksmith runners.
 
 ## Findings / gotchas
 
