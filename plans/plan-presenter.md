@@ -112,6 +112,18 @@ Designed so the UI + host packages can later be embedded natively in t3code.
 - **Registering the demo session mutates `examples/demo`** (host writes
   `feedback.json` and bumps `session.json`). `examples/**/feedback.json` is
   gitignored; restore `session.json` before committing.
+- **Bun `--compile` embeds files** imported `with { type: "file" }`; the import value is a
+  `B:/~BUN/root/<name>` path usable with `Bun.file`, and `.type` still comes from the
+  extension. Cross-compiling (`--target=bun-<os>-<arch>`) works from one machine; each
+  binary is ~100-125 MB (Bun runtime + mermaid). `embedded-ui.ts` is generated before the
+  build and the committed stub restored after, so the tree stays clean.
+- **Bundler warning** "Unsupported JSX runtime" during `bun build --compile` comes from a
+  doc comment in estree-util-build-jsx; harmless.
+- **GNU sed treats an escaped pipe as alternation.** A "fix the escaped pipe" sed rewrote
+  every double space in README.md (commit 5093e86; fixed in 3aa766e). Use perl or the Edit
+  tool for anything containing a pipe.
+- **A host started before an upgrade keeps running old code.** `pp version` shows the
+  running host's version; `pp stop` + `pp serve` picks up the new one.
 
 ## Progress log
 
@@ -126,6 +138,11 @@ Designed so the UI + host packages can later be embedded natively in t3code.
 - 2026-09-09: desktop shell on Electrobun 1.18.1; `electrobun build` OK on Windows.
 - 2026-09-09: built app launched and served the UI from its in-process host; installer run for real; all five workspaces typecheck; committed.
 - 2026-09-09: pushed to github.com/TomSawyerLabs/plan-presenter (public). Added oxfmt/oxlint/lefthook, formatted, fixed lint. Added CI (check + 5-platform desktop matrix). First run green on all five: linux x64/arm64 (`*-Setup.tar.gz` + `.tar.zst`), windows x64 (`*-Setup-canary.zip`), macOS arm64/x64 (`.dmg` + `.app.tar.zst`), each with `*-update.json`. Artifacts ~40-70 MB per platform, ~5 min wall clock.
+- 2026-09-10: version 0.1.0. Host binaries (Bun compile, UI embedded), `pp serve` binary
+  fallback, `pp stop/update/version`, release.yml (tag must match package.json; builds via
+  ci.yml with stable desktop env; GitHub Release with binaries + installers + skill tarball).
+  Local binary smoke test OK. CI green with the new host-binaries job (all five targets,
+  linux-x64 smoke-tested on the runner). Release workflow dispatched manually as a dry run: all build jobs green, release step skipped (no tag) as designed.
 
 ## Open questions for the user
 
