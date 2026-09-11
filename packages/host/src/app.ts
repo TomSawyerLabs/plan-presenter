@@ -68,17 +68,19 @@ export async function createHost(opts: HostOptions): Promise<Host> {
   await store.init();
 
   const { upgradeWebSocket, websocket } = createBunWebSocket<ServerWebSocket>();
-  const clients = new Set<{ send: (data: string) => void }>();
+  // Keyed by the underlying socket: Hono gives every WebSocket event a fresh
+  // WSContext wrapper, so the wrapper cannot identify the client again on close.
+  const clients = new Map<unknown, { send: (data: string) => void }>();
   // Long-poll waiters (agent CLI `pp wait`) keyed by session id.
   const waiters = new Map<string, Set<(e: LiveEvent) => void>>();
 
   const broadcast = (event: LiveEvent) => {
     const data = JSON.stringify(event);
-    for (const c of clients) {
+    for (const [key, c] of clients) {
       try {
         c.send(data);
       } catch {
-        clients.delete(c);
+        clients.delete(key);
       }
     }
     const sid = "sessionId" in event ? event.sessionId : null;
@@ -133,7 +135,29 @@ export async function createHost(opts: HostOptions): Promise<Host> {
   });
 
   // ----------------------------------------------------------------- meta
-  app.get("/api/health", (c) => c.json({ ok: true, version: HOST_VERSION, root: store.root }));
+  // Activity is what the auto-updater uses to decide the host is idle and can
+  // be restarted into a new version without disturbing anyone.
+  const startedAt = new Date().toISOString();
+  let lastRequestAt: number | null = null;
+  app.use("/api/*", async (c, next) => {
+    if (c.req.path !== "/api/health") lastRequestAt = Date.now();
+    await next();
+  });
+  app.get("/api/health", (c) =>
+    c.json({
+      ok: true,
+      version: HOST_VERSION,
+      root: store.root,
+      pid: process.pid,
+      execPath: process.execPath,
+      startedAt,
+      activity: {
+        clients: clients.size,
+        waiters: [...waiters.values()].reduce((n, set) => n + set.size, 0),
+        lastRequestAt: lastRequestAt === null ? null : new Date(lastRequestAt).toISOString(),
+      },
+    }),
+  );
 
   // ------------------------------------------------------------- sessions
   app.get("/api/sessions", async (c) => {
@@ -339,14 +363,14 @@ export async function createHost(opts: HostOptions): Promise<Host> {
     "/ws",
     upgradeWebSocket(() => ({
       onOpen(_evt, ws) {
-        const client = { send: (d: string) => ws.send(d) };
-        clients.add(client);
-        (ws as unknown as { __pp: unknown }).__pp = client;
+        clients.set(ws.raw ?? ws, { send: (d: string) => ws.send(d) });
         ws.send(JSON.stringify({ type: "hello", hostVersion: HOST_VERSION } satisfies LiveEvent));
       },
       onClose(_evt, ws) {
-        const client = (ws as unknown as { __pp?: { send: (d: string) => void } }).__pp;
-        if (client) clients.delete(client);
+        clients.delete(ws.raw ?? ws);
+      },
+      onError(_evt, ws) {
+        clients.delete(ws.raw ?? ws);
       },
     })),
   );
