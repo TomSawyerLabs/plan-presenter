@@ -34,6 +34,8 @@ jobs:
       - run: bun run typecheck
       - run: bun run test
       - run: bun run build
+      # Catch packaging breakage on every push, not first at release time.
+      - run: bun run scripts/package-skill.ts --out "$RUNNER_TEMP/plan-presenter-skill.tar.gz"
       - uses: actions/upload-artifact@v4
         with:
           name: ui-dist
@@ -65,6 +67,10 @@ jobs:
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:27499/api/health && break; sleep 0.5; done
           curl -sf http://127.0.0.1:27499/ | grep -q '<div id="root">'
           kill %1
+      # Real binary + real skill bundle against a fake release server:
+      # install, update with deferred restart, idle restart, tamper refusal.
+      - name: Auto-update end to end
+        run: bun run scripts/e2e-autoupdate.ts --bin packages/host/bin/pp-host-linux-x64
       - uses: actions/upload-artifact@v4
         with:
           name: pp-host-binaries

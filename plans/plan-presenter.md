@@ -59,6 +59,25 @@ Designed so the UI + host packages can later be embedded natively in t3code.
   Noisy stylistic unicorn rules are off in `.oxlintrc.json`; the React compiler rules stay on.
 - **CI on GitHub Actions first**, Blacksmith later once the workflow is stable (user's call).
   Desktop builds use `electrobun build --env=canary` and upload `apps/desktop/artifacts` per platform.
+- **Auto-update design (2026-09-11, user asked "add auto update").**
+  - Each release publishes `manifest.json` (version, tag, sha256 + size per asset). Clients read
+    `releases/latest/download/manifest.json` (GitHub redirect; no API, no rate limit), then
+    download assets from the pinned tag and verify sha256 before installing anything.
+  - Only _release_ installs self-update: the skill tarball carries `version.json` with
+    `channel: "release"`. Dev installs (`install.ts` from a checkout, or running
+    `skill/scripts/pp.ts` in the repo) are `channel: "dev"` / no version.json and never update.
+  - Checks happen at most every 6 h (1 h after a failure) from a detached
+    `pp __auto-update` process, so no agent command ever waits on the network.
+  - Host binaries are versioned under `~/.plan-presenter/bin/<version>/` with `current.json`,
+    so a running exe (locked on Windows) is never overwritten; old versions are pruned.
+  - A running host is restarted into the new binary **only when idle** (no UI WebSocket
+    clients, no `pp wait` long-polls), detected via `/api/health` `activity`. Hosts that can't
+    report activity (0.1.0) are left running and the agent is told how to restart.
+  - Desktop: Electrobun Updater against the same `latest/download` base, with a
+    version guard (its updater compares hashes only, so it would offer downgrades), and a
+    "Restart now / Later" prompt. Never restarts the app on its own.
+  - Opt-out: `PP_NO_AUTO_UPDATE=1` or `pp auto-update off`.
+  - 0.1.0 release installs have no updater code; they need one manual reinstall.
 
 ## Plan / steps
 
@@ -75,7 +94,13 @@ Designed so the UI + host packages can later be embedded natively in t3code.
 11. [x] Publish to GitHub (TomSawyerLabs/plan-presenter) with CI building on all platforms.
 12. [x] Release path: cross-compiled host binaries with embedded UI, `pp serve` download fallback, tag-driven release workflow (verified locally; CI run for the binaries job in progress).
 13. [x] v0.1.0 released (tag pushed 2026-09-10 on user request): host binaries for five targets, stable desktop installers, skill tarball. Fresh-machine install verified from the release on Windows.
-14. [ ] Next: Blacksmith runners; then public URL + token for HTTPS-fronted hosts.
+14. [x] Auto-update (design under Decisions): release manifest + sha256-verified downloads,
+        skill self-update (release channel only), versioned host binaries with idle restart +
+        rollback, serve lock, host `/api/health` activity, desktop updater with downgrade guard +
+        prompt, release and CI wiring (E2E runs in CI), version 0.2.0. Verified: 78 tests, E2E on
+        Windows, desktop updater against the real v0.1.0 release. Reaches users with the v0.2.0 tag,
+        which the user pushes.
+15. [ ] Next: Blacksmith runners; then public URL + token for HTTPS-fronted hosts.
 
 ## Findings / gotchas
 
@@ -141,6 +166,27 @@ Designed so the UI + host packages can later be embedded natively in t3code.
   is ready (right after host start) is missed. Render errors are therefore cleared on every
   recompile with a new hash (any `getPage`), and `pp errors`/`pp review`/`pp wait` fetch the
   session summary first, which compiles every page.
+- **Hono's Bun WebSocket adapter hands every event a fresh `WSContext` wrapper.** The host
+  tagged the wrapper in `onOpen` and looked for the tag in `onClose`, so closed viewers were
+  never removed: `clients` only grew, and the host could never look idle. Found by the
+  auto-update E2E; fixed by keying clients on `ws.raw` (the underlying Bun socket), with a
+  regression test (`packages/host/test/ws-activity.test.ts`).
+- **Bun 1.3.0 has no `Bun.Archive`**, and the installed skill has no node_modules, so the skill
+  carries its own tar reader/writer (`skill/scripts/_tar.ts`). Old GNU tar headers
+  (`ustar  `) put atime/ctime where POSIX ustar has the name prefix; only use the prefix when
+  byte 262 is NUL.
+- **Electrobun's updater compares build hashes, not versions**, and would happily "update" a
+  newer build to an older release. The desktop shell checks `isNewer()` before downloading.
+- **With `release.baseUrl` set, `electrobun build --env=stable` diffs against the latest
+  release at build time.** Verified locally against v0.1.0: fetched
+  `stable-win-x64-update.json` through the `latest/download` redirect and produced a 47 KB
+  `stable-win-x64-<prevHash>.patch` (vs a 35 MB full tarball). Canary builds find no canary
+  files there and skip patching.
+- **GitHub `releases/latest/download/<asset>` works for update discovery** without the API
+  (no rate limit): one redirect to the newest non-prerelease release's asset.
+- **`bun-types` has no `windowsHide` for `Bun.spawn`**; detached spawns are what we have.
+- **Root `scripts/` was not covered by any typecheck.** Added `../scripts` to the skill's
+  tsconfig include (they are skill release tooling).
 
 ## Progress log
 
@@ -170,6 +216,17 @@ Designed so the UI + host packages can later be embedded natively in t3code.
 - 2026-09-10: v0.1.0 tagged and released via release.yml (all jobs green, GitHub Release with
   21 assets). Verified from a scratch PP_HOME with no checkout: skill tarball from the release,
   `pp serve` downloaded `pp-host-windows-x64.exe` (87 MB), host 0.1.0 up, session + UI OK.
+- 2026-09-11: auto-update implemented (see Decisions). `bun run check` green, 78 tests.
+  `scripts/e2e-autoupdate.ts` (real compiled host + real packaged skill vs a fake release
+  server) passes on Windows: download + start, update with restart deferred while a viewer
+  is connected, background idle restart into the new binary, one-time agent notice, tampered
+  release refused with nothing changed, stop. Its first run caught the WebSocket client leak.
+  Local stable desktop build generated a 47 KB delta patch against v0.1.0.
+- 2026-09-11: desktop updater verified against the real GitHub v0.1.0 release from an
+  unpacked stable build (temp copy, scratch port): claiming 0.3.0 it saw 0.1.0 and ignored it
+  (downgrade guard); claiming 0.0.1 it downloaded the 35 MB bundle via latest/download in ~2 s,
+  decompressed it and reached "download-complete" (the Restart/Later prompt point). Test copy,
+  stable app-data and desktop-update.log removed afterwards.
 
 ## Open questions for the user
 

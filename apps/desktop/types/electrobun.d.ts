@@ -36,11 +36,57 @@ declare module "electrobun/bun" {
     focus(): void;
     setTitle(title: string): void;
   }
+
+  export interface MessageBoxOptions {
+    type?: "none" | "info" | "error" | "question" | "warning";
+    title?: string;
+    message?: string;
+    detail?: string;
+    buttons?: string[];
+    defaultId?: number;
+    cancelId?: number;
+  }
   export const Utils: {
     openExternal(url: string): boolean;
     openPath(path: string): boolean;
     showItemInFolder(path: string): boolean;
+    showMessageBox(options?: MessageBoxOptions): Promise<{ response: number }>;
+    showNotification(options: {
+      title: string;
+      body?: string;
+      subtitle?: string;
+      silent?: boolean;
+    }): void;
     quit(): void;
+  };
+
+  export interface UpdateInfo {
+    version: string;
+    hash: string;
+    updateAvailable: boolean;
+    updateReady: boolean;
+    error: string;
+  }
+  export interface LocalInfo {
+    version: string;
+    hash: string;
+    baseUrl: string;
+    channel: string;
+    name: string;
+    identifier: string;
+  }
+  export interface UpdateStatusEntry {
+    status: string;
+    message: string;
+    timestamp: number;
+  }
+  export const Updater: {
+    getLocalInfo(): Promise<LocalInfo>;
+    checkForUpdate(): Promise<UpdateInfo>;
+    downloadUpdate(): Promise<void>;
+    applyUpdate(): Promise<void>;
+    updateInfo(): UpdateInfo | undefined;
+    onStatusChange(callback: ((entry: UpdateStatusEntry) => void) | null): void;
   };
 }
 

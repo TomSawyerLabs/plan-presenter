@@ -1,20 +1,33 @@
 // Shared helpers for the pp CLI. Dependency-free so the installed skill
 // works from ~/.claude/skills without a node_modules.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+  writeSync,
+} from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 
 export const DEFAULT_PORT = 27411;
 
 export interface PpConfig {
-  /** Where the plan-presenter repo lives (to spawn the host). */
+  /** Where the plan-presenter repo lives (dev installs run the host from it). */
   repoDir?: string;
   port?: number;
   /** Bind address for `pp serve` (127.0.0.1 or 0.0.0.0). */
   bind?: string;
   /** Sessions root passed to the host. */
   root?: string;
+  /** Background self-update for release installs (default on). */
+  autoUpdate?: boolean;
 }
 
 export function ppHome(): string {
@@ -26,18 +39,11 @@ export function configPath(): string {
 }
 
 export function loadConfig(): PpConfig {
-  const p = configPath();
-  if (!existsSync(p)) return {};
-  try {
-    return JSON.parse(readFileSync(p, "utf8")) as PpConfig;
-  } catch {
-    return {};
-  }
+  return readJson<PpConfig>(configPath()) ?? {};
 }
 
 export function saveConfig(c: PpConfig): void {
-  mkdirSync(dirname(configPath()), { recursive: true });
-  writeFileSync(configPath(), JSON.stringify(c, null, 2) + "\n");
+  writeJsonAtomic(configPath(), c);
 }
 
 export function hostUrl(): string {
@@ -161,73 +167,106 @@ export function str(v: string | boolean | undefined): string | undefined {
 }
 
 // ---------------------------------------------------------------------------
-// Prebuilt host binaries (GitHub Releases)
+// Paths, files, locks
 // ---------------------------------------------------------------------------
 
-export const REPO = "TomSawyerLabs/plan-presenter";
-
-/** `linux-x64`, `linux-arm64`, `darwin-arm64`, `darwin-x64`, `windows-x64`. */
-export function platformKey(): string {
-  const os =
-    process.platform === "win32" ? "windows" : process.platform === "darwin" ? "darwin" : "linux";
-  const arch = process.arch === "arm64" ? "arm64" : "x64";
-  return `${os}-${arch}`;
+function normPath(p: string): string {
+  const r = resolve(p);
+  return process.platform === "win32" ? r.toLowerCase() : r;
 }
 
-export function hostBinaryName(): string {
-  return `pp-host-${platformKey()}${process.platform === "win32" ? ".exe" : ""}`;
+export function samePath(a: string, b: string): boolean {
+  return normPath(a) === normPath(b);
 }
 
-export function hostBinaryPath(): string {
-  return join(ppHome(), "bin", hostBinaryName());
+export function isInsideDir(dir: string, p: string): boolean {
+  const d = normPath(dir);
+  return normPath(p).startsWith(d.endsWith(sep) ? d : d + sep);
 }
 
-export function hostBinaryUrl(tag = "latest"): string {
-  const name = hostBinaryName();
-  return tag === "latest"
-    ? `https://github.com/${REPO}/releases/latest/download/${name}`
-    : `https://github.com/${REPO}/releases/download/${tag}/${name}`;
-}
-
-/** Download the host binary for this platform into ~/.plan-presenter/bin (atomic replace). */
-export async function downloadHostBinary(
-  tag = "latest",
-  log: (s: string) => void = () => {},
-): Promise<string> {
-  const dest = hostBinaryPath();
-  mkdirSync(dirname(dest), { recursive: true });
-  const url = hostBinaryUrl(tag);
-  log(`downloading ${url}`);
-  const res = await fetch(url, { redirect: "follow" });
-  if (!res.ok) {
-    throw new Error(
-      `download failed: ${res.status} ${res.statusText} for ${url}` +
-        (res.status === 404 ? " (no release for this platform yet?)" : ""),
-    );
+/** Replace `dest` with `tmp`, retrying briefly: Windows refuses while another handle has it open. */
+export function replaceFile(tmp: string, dest: string): void {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      renameSync(tmp, dest);
+      return;
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if ((code === "EPERM" || code === "EBUSY" || code === "EACCES") && attempt < 10) {
+        Bun.sleepSync(20 * (attempt + 1));
+        continue;
+      }
+      rmSync(tmp, { force: true });
+      throw err;
+    }
   }
-  const tmp = `${dest}.${process.pid}.download`;
-  await Bun.write(tmp, res);
-  const { renameSync, chmodSync, rmSync } = await import("node:fs");
-  try {
-    if (existsSync(dest)) rmSync(dest);
-    renameSync(tmp, dest);
-  } catch (e) {
-    rmSync(tmp, { force: true });
-    throw new Error(`could not replace ${dest} (is the host running? try: pp stop)`, { cause: e });
-  }
-  if (process.platform !== "win32") chmodSync(dest, 0o755);
-  log(`installed ${dest}`);
-  return dest;
 }
 
-/** Run `<bin> --version` and return the printed version, or null. */
-export async function binaryVersion(bin: string): Promise<string | null> {
+export function writeJsonAtomic(path: string, value: unknown): void {
+  mkdirSync(dirname(path), { recursive: true });
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`);
+  replaceFile(tmp, path);
+}
+
+export function readJson<T>(path: string): T | null {
   try {
-    const proc = Bun.spawn([bin, "--version"], { stdout: "pipe", stderr: "ignore" });
-    const text = (await new Response(proc.stdout).text()).trim();
-    await proc.exited;
-    return text || null;
+    return JSON.parse(readFileSync(path, "utf8")) as T;
   } catch {
     return null;
   }
+}
+
+export function pidAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as { code?: string }).code === "EPERM";
+  }
+}
+
+export interface Lock {
+  release(): void;
+}
+
+/**
+ * Exclusive lock file (O_EXCL create) recording the owner's pid. A lock whose
+ * owner has died, or that is older than `staleMs`, is taken over.
+ */
+export function acquireLock(path: string, staleMs: number): Lock | null {
+  mkdirSync(dirname(path), { recursive: true });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const fd = openSync(path, "wx");
+      writeSync(fd, JSON.stringify({ pid: process.pid, at: new Date().toISOString() }));
+      closeSync(fd);
+      return {
+        release: () => {
+          if (readJson<{ pid?: number }>(path)?.pid === process.pid) rmSync(path, { force: true });
+        },
+      };
+    } catch (err) {
+      if ((err as { code?: string }).code !== "EEXIST") throw err;
+      let age: number;
+      try {
+        age = Date.now() - statSync(path).mtimeMs;
+      } catch {
+        continue; // vanished between our create and stat: try again
+      }
+      const owner = readJson<{ pid?: number }>(path);
+      const stale =
+        age > staleMs ||
+        (owner?.pid !== undefined && !pidAlive(owner.pid)) ||
+        (owner === null && age > 5_000); // half-written by a process that died
+      if (!stale) return null;
+      rmSync(path, { force: true });
+    }
+  }
+  return null;
+}
+
+export function fileExists(path: string): boolean {
+  return existsSync(path);
 }

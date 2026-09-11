@@ -40,8 +40,37 @@ curl -L https://github.com/TomSawyerLabs/plan-presenter/releases/latest/download
 
 The first `pp serve` downloads a self-contained host binary for your platform
 (`pp-host-<os>-<arch>`: Bun runtime + host + UI, ~100 MB) into
-`~/.plan-presenter/bin`. `pp update` refreshes it. Desktop installers for
-Windows, macOS, and Linux are on the same release page.
+`~/.plan-presenter/bin`. From then on the install keeps itself current (see
+[Updates](#updates)). Desktop installers for Windows, macOS, and Linux are on
+the same release page.
+
+Installed 0.1.0? Run the command above once more: 0.1.0 predates the updater.
+
+## Updates
+
+Release installs update themselves; there is nothing to run.
+
+- **When:** any `pp` command checks, at most every 6 hours, by spawning a
+  detached background job, so no command ever waits on the network.
+- **What:** each release publishes `manifest.json` with the sha256 and size of
+  every asset. The job reads it from GitHub's `releases/latest/download`, and
+  installs a newer host binary and skill bundle only if the checksums match.
+- **Host restart:** host binaries live in versioned folders under
+  `~/.plan-presenter/bin/`, so the running one is never overwritten. The host
+  is restarted into the new version only when it is idle: no session open in
+  a browser, no agent in `pp wait`, no API calls for 30 seconds. Otherwise it
+  retries every 10 minutes. A binary that fails to start is rolled back to the
+  previous version.
+- **Agents:** the next `pp` command prints a one-time `plan-presenter updated
+X -> Y; re-read SKILL.md` notice.
+- **Desktop app:** checks shortly after launch and every 6 hours, downloads in
+  the background (a delta patch when available), and asks before restarting.
+- **Control:** `pp update` updates immediately; `pp auto-update off` (or
+  `PP_NO_AUTO_UPDATE=1`) turns background updates off; `pp version` and
+  `pp auto-update status` show what is installed and when it last checked.
+  Logs: `~/.plan-presenter/update.log` and `desktop-update.log`.
+
+Development installs (below) never self-update; they follow their checkout.
 
 ## Development install (from a checkout)
 

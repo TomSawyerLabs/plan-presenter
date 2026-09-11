@@ -1,17 +1,19 @@
 #!/usr/bin/env bun
 /**
  * Install the plan-presenter skill for Claude Code (or any agent that reads
- * SKILL.md directories).
+ * SKILL.md directories) from this checkout.
  *
  *   bun run skill/scripts/install.ts            -> ~/.claude/skills/plan-presenter
  *   bun run skill/scripts/install.ts --project  -> ./.claude/skills/plan-presenter (cwd)
  *   bun run skill/scripts/install.ts --to DIR   -> DIR/plan-presenter
  *
- * Also records the repo location in ~/.plan-presenter/config.json so `pp serve`
- * can spawn the host, and builds the UI if it hasn't been built yet.
+ * This is a *dev* install: it records the repo location in
+ * ~/.plan-presenter/config.json so `pp serve` runs the host from source, and
+ * marks the copy `channel: "dev"` so it never self-updates from releases.
+ * Release installs come from the release tarball instead (see README).
  */
 
-import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { loadConfig, parseArgv, saveConfig, skillDir, str } from "./_lib.ts";
@@ -51,9 +53,18 @@ cpSync(join(skillDir(), "scripts"), join(target, "scripts"), {
 });
 cpSync(join(skillDir(), "reference"), join(target, "reference"), { recursive: true });
 
-// 3. Record the repo dir for `pp serve`.
+// 3. Mark the copy as a dev install: it follows this checkout, never self-updates.
+const version = (
+  JSON.parse(readFileSync(join(repoDir, "package.json"), "utf8")) as { version: string }
+).version;
+writeFileSync(
+  join(target, "version.json"),
+  `${JSON.stringify({ version, channel: "dev", repoDir }, null, 2)}\n`,
+);
+
+// 4. Record the repo dir for `pp serve`.
 saveConfig({ ...loadConfig(), repoDir });
 
-console.log(`installed skill to ${target}`);
+console.log(`installed skill ${version} (dev) to ${target}`);
 console.log(`recorded repoDir=${repoDir} in ~/.plan-presenter/config.json`);
 console.log(`\nTry: bun run ${join(target, "scripts", "pp.ts")} serve`);

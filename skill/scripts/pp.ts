@@ -1,48 +1,71 @@
 #!/usr/bin/env bun
 /**
- * pp - agent CLI for plan-presenter.
+ * pp - agent CLI for plan-presenter (usage below; SKILL.md explains the loop).
  *
- *   pp serve [--lan] [--port N]             ensure the host is running (spawns it detached)
- *   pp stop                                 stop the host started by `pp serve`
- *   pp update [--tag vX.Y.Z]                download the latest prebuilt host binary
- *   pp version                              CLI, binary and running-host versions
- *   pp status [<session>]                   host health / session summary
- *   pp sessions                             list sessions
- *   pp new "<title>" [--id s] [--root DIR]... [--dir DIR]   create a session
- *   pp page <session> <pageId> [--file F]   write a page from a file or stdin
- *   pp open <session>                       open the UI in the host machine's browser
- *   pp review <session> [--open]            mark awaiting-review (asks the human to look)
- *   pp wait <session> [--timeout 9m] [--any] block until the human sends feedback; prints it
- *   pp errors <session> [--all]             open render errors (compile/mermaid/chart/asset)
- *   pp feedback <session> [--open|--batch N|--since N|--json]   print feedback
- *   pp reply <session> <id> "<text>"        reply to a feedback item (marks it acknowledged)
- *   pp resolve <session> <id>...            mark items resolved
- *   pp close <session>                      close the session
- *   pp rm <session>                         delete (or unregister) a session
- *
- * Host resolution for `pp serve`: a repo checkout recorded in
- * ~/.plan-presenter/config.json (dev), else the prebuilt binary in
- * ~/.plan-presenter/bin, downloaded from GitHub Releases on first use.
+ * `pp serve` runs the host from the repo checkout recorded by the dev installer,
+ * otherwise from the prebuilt binary under ~/.plan-presenter/bin (downloaded
+ * from GitHub Releases on first use). Release installs update themselves in the
+ * background; see _autoupdate.ts.
  */
 
-import { existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import {
+  autoUpdateStatus,
+  maybeScheduleAutoUpdate,
+  readState,
+  runAutoUpdate,
+  setAutoUpdate,
+  takeUpdateNotice,
+  updateLogPath,
+} from "./_autoupdate.ts";
+import { healthy, hostLogPath, installHost, serve, stop } from "./_host.ts";
 import {
   api,
   ApiError,
-  binaryVersion,
   DEFAULT_PORT,
-  downloadHostBinary,
-  hostBinaryPath,
   hostUrl,
   lanUrl,
   loadConfig,
   parseArgv,
   parseDuration,
-  ppHome,
-  saveConfig,
+  samePath,
   str,
 } from "./_lib.ts";
+import {
+  binaryVersion,
+  currentHostBinary,
+  fetchManifest,
+  installHostBinary,
+  installSkillBundle,
+  isNewer,
+  ManifestUnavailable,
+  readCurrentHost,
+  skillInfo,
+  type CurrentHost,
+} from "./_release.ts";
+
+const USAGE = `pp - agent CLI for plan-presenter
+
+  pp serve [--lan] [--port N]              start the host if it isn't running
+  pp stop                                  stop the host started by pp serve
+  pp status [<session>]                    host health, or a session summary + URL
+  pp sessions                              list sessions
+  pp new "<title>" [--id x] [--root DIR] [--dir DIR]   create a session
+  pp page <session> <pageId> [--file F]    write a page (stdin if no --file)
+  pp open <session> [--page P]             open the UI in the host machine's browser
+  pp review <session> [--open] [--force]   ask for review (refuses while render errors are open)
+  pp wait <session> [--timeout 9m] [--any] block until the human sends feedback; prints it
+  pp errors <session> [--all]              render errors (compile/mermaid/chart/asset/...)
+  pp feedback <session> [--open|--batch N|--since N|--json]
+  pp reply <session> <id> "<text>"         reply to a feedback item (marks it acknowledged)
+  pp resolve <session> <id>...             mark items resolved
+  pp ack <session> <id>...                 mark items acknowledged
+  pp close <session>                       close the session
+  pp rm <session>                          delete (or unregister) a session
+  pp version                               skill, host binary and running host versions
+  pp update [--check] [--tag vX.Y.Z]       update now (release installs also update themselves)
+  pp auto-update [on|off|status|now]       background self-update for release installs`;
 
 interface SessionSummary {
   id: string;
@@ -58,8 +81,11 @@ interface SessionSummary {
 const { _: args, flags } = parseArgv(process.argv.slice(2));
 const cmd = args[0];
 
-function out(s: string) {
-  process.stdout.write(s.endsWith("\n") ? s : s + "\n");
+function out(s: string): void {
+  process.stdout.write(s.endsWith("\n") ? s : `${s}\n`);
+}
+function note(s: string): void {
+  process.stderr.write(`pp: ${s}\n`);
 }
 function die(msg: string, code = 1): never {
   process.stderr.write(`pp: ${msg}\n`);
@@ -67,118 +93,35 @@ function die(msg: string, code = 1): never {
 }
 function need(i: number, what: string): string {
   const v = args[i];
-  if (!v) die(`missing ${what}\n\n${usage()}`);
+  if (!v) die(`missing ${what}\n\n${USAGE}`);
   return v;
 }
-
-function usage(): string {
-  return readFileSync(new URL(import.meta.url))
-    .toString()
-    .split("\n")
-    .slice(2, 23)
-    .map((l) => l.replace(/^ \* ?/, ""))
-    .join("\n");
+function numFlag(name: string): number | undefined {
+  const v = str(flags[name]);
+  return v === undefined ? undefined : Number(v);
 }
 
-async function healthy(): Promise<{ version: string } | null> {
-  try {
-    return await api<{ version: string }>("/api/health", { timeoutMs: 1500 });
-  } catch {
-    return null;
-  }
-}
-
-function pidPath(): string {
-  return join(ppHome(), "host.pid");
-}
-
-/** How to launch the host: from a repo checkout (dev) or the prebuilt binary. */
-async function resolveHostCommand(): Promise<{
-  argv: string[];
-  cwd?: string;
-  env?: Record<string, string>;
-  source: string;
-}> {
-  const cfg = loadConfig();
-  const repoDir = str(flags.repo) ?? cfg.repoDir;
-  if (repoDir && existsSync(join(repoDir, "packages", "host", "src", "cli.ts"))) {
-    return {
-      argv: ["bun", "run", join(repoDir, "packages", "host", "src", "cli.ts")],
-      cwd: repoDir,
-      env: { PP_UI_DIR: join(repoDir, "packages", "ui", "dist") },
-      source: `repo ${repoDir}`,
-    };
-  }
-  const bin = hostBinaryPath();
-  if (!existsSync(bin)) {
-    out("no host found; downloading the prebuilt host binary…");
-    await downloadHostBinary(str(flags.tag) ?? "latest", (s) => process.stderr.write(`${s}\n`));
-  }
-  return { argv: [bin], source: `binary ${bin}` };
-}
-
-async function serve(): Promise<void> {
-  const cfg = loadConfig();
-  const port = Number(str(flags.port) ?? cfg.port ?? DEFAULT_PORT);
-  const bind = flags.lan ? "0.0.0.0" : (str(flags.bind) ?? cfg.bind ?? "127.0.0.1");
-  if (await healthy()) {
-    out(`host already running at ${hostUrl()}`);
-    if (flags.lan)
-      out("note: --lan ignored because the host is already running; stop it and re-run to rebind");
-    return;
-  }
-  const launch = await resolveHostCommand();
-  mkdirSync(ppHome(), { recursive: true });
-  const log = openSync(join(ppHome(), "host.log"), "a");
-  const root = cfg.root ?? join(ppHome(), "sessions");
-  const proc = Bun.spawn([...launch.argv, "--port", String(port), "--host", bind, "--root", root], {
-    cwd: launch.cwd,
-    stdout: log,
-    stderr: log,
-    stdin: "ignore",
-    detached: true,
-    env: { ...process.env, ...launch.env },
-  });
-  proc.unref();
-  writeFileSync(pidPath(), String(proc.pid));
-  saveConfig({ ...cfg, repoDir: str(flags.repo) ?? cfg.repoDir, port, bind, root });
-  for (let i = 0; i < 50; i++) {
-    await Bun.sleep(100);
-    const h = await healthy();
-    if (h) {
-      out(
-        `host ${h.version} started at http://127.0.0.1:${port} from ${launch.source} (pid ${proc.pid}, log ${join(ppHome(), "host.log")})`,
-      );
-      if (bind === "0.0.0.0") {
-        const lan = await lanUrl(port);
-        if (lan) out(`LAN: ${lan}`);
-      }
-      return;
-    }
-  }
-  die(`host did not become healthy; see ${join(ppHome(), "host.log")}`);
-}
-
-async function stop(): Promise<void> {
-  const p = pidPath();
-  if (!existsSync(p)) {
-    if (await healthy())
-      die("a host is running but was not started by `pp serve`; stop it yourself");
-    return out("host not running");
-  }
-  const pid = Number(readFileSync(p, "utf8").trim());
-  try {
-    process.kill(pid);
-    out(`stopped host (pid ${pid})`);
-  } catch (e) {
-    out(`host pid ${pid} not running (${(e as Error).message})`);
-  }
-  rmSync(p, { force: true });
-  for (let i = 0; i < 20 && (await healthy()); i++) await Bun.sleep(100);
-}
-
+/** Start the host if needed; progress goes to stderr so stdout stays parseable. */
 async function ensureHost(): Promise<void> {
-  if (!(await healthy())) await serve();
+  const r = await serve({ log: note });
+  if (r.started) note(`started host ${r.health.version} at ${r.url} (${r.source})`);
+}
+
+/** After a manual update: restart the pp-managed host into the new binary right away. */
+async function restartInto(host: CurrentHost): Promise<void> {
+  const h = await healthy();
+  if (!h || (h.execPath && samePath(h.execPath, host.path))) return;
+  const s = await stop(out);
+  if (s === "stopped") {
+    const r = await serve({ log: out });
+    out(`host ${r.health.version} restarted from ${r.source}`);
+  } else if (s === "not-ours") {
+    out(
+      "the running host isn't managed by pp serve (desktop app or manual start); restart it to use the new version",
+    );
+  } else if (s === "failed") {
+    out(`could not stop the running host; see ${hostLogPath()}`);
+  }
 }
 
 function sessionUrl(id: string, pageId?: string): string {
@@ -210,47 +153,165 @@ async function openInBrowser(url: string): Promise<void> {
   Bun.spawn(argv, { stdout: "ignore", stderr: "ignore" }).unref();
 }
 
+/** Commands that must not trigger (or be interrupted by) background update checks. */
+const NO_AUTO_UPDATE = new Set<string | undefined>([
+  undefined,
+  "help",
+  "--help",
+  "update",
+  "auto-update",
+  "__auto-update",
+]);
+
 async function main(): Promise<void> {
+  if (!NO_AUTO_UPDATE.has(cmd)) {
+    maybeScheduleAutoUpdate(import.meta.path);
+    const notice = takeUpdateNotice();
+    if (notice) note(notice);
+  }
+
   switch (cmd) {
     case undefined:
     case "help":
     case "--help":
-      out(usage());
+      out(USAGE);
       return;
 
-    case "serve":
-      await serve();
-      return;
-
-    case "stop":
-      await stop();
-      return;
-
-    case "update": {
-      const running = await healthy();
-      if (running && existsSync(pidPath())) {
-        out("stopping the running host first…");
-        await stop();
+    case "serve": {
+      const r = await serve({
+        port: numFlag("port"),
+        bind: flags.lan ? "0.0.0.0" : str(flags.bind),
+        repo: str(flags.repo),
+        tag: str(flags.tag),
+        log: out,
+      });
+      if (!r.started) {
+        out(`host ${r.health.version} already running at ${r.url}`);
+        if (flags.lan)
+          out(
+            "note: --lan ignored because the host is already running; pp stop, then pp serve --lan",
+          );
+        return;
       }
-      const bin = await downloadHostBinary(str(flags.tag) ?? "latest", out);
-      out(`host binary version: ${(await binaryVersion(bin)) ?? "unknown"}`);
-      if (running) {
-        out("restarting host…");
-        await serve();
+      out(
+        `host ${r.health.version} started at ${r.url} from ${r.source} (pid ${r.pid}, log ${hostLogPath()})`,
+      );
+      if (loadConfig().bind === "0.0.0.0") {
+        const lan = await lanUrl(Number(new URL(r.url).port));
+        if (lan) out(`LAN: ${lan}`);
       }
       return;
     }
 
+    case "stop": {
+      const r = await stop(out);
+      if (r === "not-running") out("host not running");
+      else if (r === "not-ours")
+        die(
+          "the running host was not started by `pp serve` (desktop app or manual start); stop it there",
+        );
+      else if (r === "failed") die(`could not stop the host; see ${hostLogPath()}`);
+      return;
+    }
+
     case "version": {
+      const info = skillInfo();
       const cfg = loadConfig();
-      out(`cli: ${resolve(import.meta.dir, "..")}`);
-      out(`repo: ${cfg.repoDir ?? "(none)"}`);
-      const bin = hostBinaryPath();
-      out(
-        `binary: ${existsSync(bin) ? `${bin} (${(await binaryVersion(bin)) ?? "?"})` : "(not downloaded)"}`,
-      );
+      out(`skill: ${info.version} (${info.channel}) at ${info.dir}`);
+      if (cfg.repoDir) out(`repo: ${cfg.repoDir}`);
+      const bin = currentHostBinary();
+      const binVersion = bin
+        ? (readCurrentHost()?.version ?? (await binaryVersion(bin)) ?? "?")
+        : null;
+      out(`host binary: ${bin ? `${binVersion} at ${bin}` : "(not installed)"}`);
       const h = await healthy();
-      out(`running host: ${h ? `${h.version} at ${hostUrl()}` : "none"}`);
+      out(
+        `running host: ${h ? `${h.version} at ${hostUrl()}${h.execPath ? ` (${h.execPath})` : ""}` : "none"}`,
+      );
+      const st = readState();
+      const check = st.lastCheckAt
+        ? `; last check ${st.lastCheckAt}${st.lastCheckOk === false ? ` (failed: ${st.lastError})` : ""}`
+        : "";
+      out(
+        `auto-update: ${autoUpdateStatus(info).reason}${check}${st.latestVersion ? `; latest release ${st.latestVersion}` : ""}`,
+      );
+      return;
+    }
+
+    case "update": {
+      const info = skillInfo();
+      if (info.channel !== "release") {
+        out(
+          `dev install (skill ${info.version}); it follows ${loadConfig().repoDir ?? "its checkout"}: ` +
+            "git pull && bun install && bun run build",
+        );
+        return;
+      }
+      const tag = str(flags.tag);
+      let manifest;
+      try {
+        manifest = await fetchManifest(tag);
+      } catch (err) {
+        if (!(err instanceof ManifestUnavailable && err.status === 404 && tag)) throw err;
+        if (flags.check) return out(`release ${tag} predates update manifests`);
+        out(`release ${tag} predates update manifests; installing its host binary only`);
+        await restartInto(await installHost(tag, out));
+        return;
+      }
+      out(
+        `installed: ${info.version}; ${tag ? "requested" : "latest release"}: ${manifest.version}`,
+      );
+      if (flags.check) return;
+      if (!tag && !isNewer(manifest.version, info.version)) return out("already up to date");
+      const host = await installHostBinary(manifest, out);
+      const res = await installSkillBundle(manifest, info.dir, out);
+      out(
+        `skill ${manifest.version} installed (${res.written} files` +
+          `${res.removed.length ? `, removed ${res.removed.join(", ")}` : ""})`,
+      );
+      await restartInto(host);
+      return;
+    }
+
+    case "auto-update": {
+      const sub = args[1] ?? "status";
+      if (sub === "on" || sub === "off") {
+        setAutoUpdate(sub === "on");
+      } else if (sub === "now") {
+        const r = await runAutoUpdate({ waitForIdle: false, log: out, force: true });
+        out(
+          `result: ${r.status}${r.to ? ` ${r.from} -> ${r.to}` : ""}` +
+            `${r.restart ? `; host restart: ${r.restart}` : ""}${r.error ? `; ${r.error}` : ""}`,
+        );
+        return;
+      } else if (sub !== "status") {
+        die("usage: pp auto-update [on|off|status|now]");
+      }
+      const st = readState();
+      out(`auto-update: ${autoUpdateStatus().reason}`);
+      if (st.lastCheckAt) {
+        out(
+          `last check: ${st.lastCheckAt}${st.lastCheckOk === false ? ` (failed: ${st.lastError})` : ""}`,
+        );
+      }
+      if (st.latestVersion) out(`latest release seen: ${st.latestVersion}`);
+      if (st.installed) {
+        const i = st.installed;
+        out(`last update: ${i.from} -> ${i.version} at ${i.at} (host restart: ${i.hostRestart})`);
+      }
+      out(`log: ${updateLogPath()}`);
+      return;
+    }
+
+    case "__auto-update": {
+      // Detached background job spawned by maybeScheduleAutoUpdate; output goes to update.log.
+      const log = (s: string) =>
+        process.stdout.write(`${new Date().toISOString()} [${process.pid}] ${s}\n`);
+      try {
+        await runAutoUpdate({ waitForIdle: true, log });
+      } catch (err) {
+        log(`error: ${(err as Error).stack ?? String(err)}`);
+      }
       return;
     }
 
@@ -275,10 +336,11 @@ async function main(): Promise<void> {
       const list = await api<SessionSummary[]>("/api/sessions");
       if (flags.json) return out(JSON.stringify(list, null, 2));
       if (!list.length) return out("(no sessions)");
-      for (const s of list)
+      for (const s of list) {
         out(
           `${s.id}  ${s.status.padEnd(15)}  open=${String(s.openFeedback).padEnd(3)}  ${s.title}`,
         );
+      }
       return;
     }
 
@@ -413,12 +475,28 @@ async function main(): Promise<void> {
       process.stderr.write(
         `waiting for feedback on "${before.title}" (${sessionUrl(id)}) up to ${Math.round(total / 1000)}s…\n`,
       );
+      let failures = 0;
       while (Date.now() < deadline) {
         const slice = Math.min(25_000, deadline - Date.now());
-        const r = await api<{ timedOut: boolean; event: { type: string; batch?: number } | null }>(
-          `/api/sessions/${encodeURIComponent(id)}/wait?timeout=${slice}${any ? "&any=1" : ""}`,
-          { timeoutMs: slice + 5_000 },
-        );
+        let r: { timedOut: boolean; event: { type: string; batch?: number } | null };
+        try {
+          r = await api(
+            `/api/sessions/${encodeURIComponent(id)}/wait?timeout=${slice}${any ? "&any=1" : ""}`,
+            { timeoutMs: slice + 5_000 },
+          );
+          failures = 0;
+        } catch (err) {
+          // The host went away (crash, or an update restarting it): reconnect and keep waiting.
+          if (!(err instanceof ApiError) || err.status !== 0 || ++failures > 5) throw err;
+          note(`lost the host; reconnecting (${failures}/5)`);
+          await Bun.sleep(1000 * failures);
+          try {
+            await ensureHost();
+          } catch {
+            /* retried on the next pass */
+          }
+          continue;
+        }
         if (!r.timedOut && r.event) {
           const q =
             r.event.type === "render.error"
@@ -467,10 +545,7 @@ async function main(): Promise<void> {
       const body = need(3, "text");
       await api(
         `/api/sessions/${encodeURIComponent(id)}/feedback/${encodeURIComponent(fid)}/replies`,
-        {
-          method: "POST",
-          body: JSON.stringify({ author: "agent", body }),
-        },
+        { method: "POST", body: JSON.stringify({ author: "agent", body }) },
       );
       out(`replied to ${fid}`);
       return;
@@ -513,7 +588,7 @@ async function main(): Promise<void> {
     }
 
     default:
-      die(`unknown command "${cmd}"\n\n${usage()}`);
+      die(`unknown command "${cmd}"\n\n${USAGE}`);
   }
 }
 

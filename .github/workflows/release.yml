@@ -1,7 +1,10 @@
 # Release: push a tag `vX.Y.Z` that matches package.json's version.
 # Builds everything through the CI workflow (stable desktop env), then creates a
-# GitHub Release carrying the host binaries, the desktop installers, and the
-# skill bundle. Nothing is ever published from a workstation.
+# GitHub Release carrying the host binaries, the desktop installers + update
+# files (update.json, tarballs, delta patches), the skill bundle, and
+# manifest.json (sha256 + size of every asset), which auto-updating clients
+# read through GitHub's latest/download redirect. Nothing is ever published
+# from a workstation.
 
 name: Release
 
@@ -48,15 +51,15 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
       - uses: actions/download-artifact@v4
         with:
           path: artifacts/
+      # version.json inside marks it a release install, which enables self-update.
       - name: Package the skill bundle
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p dist
-          tar -czf dist/plan-presenter-skill.tar.gz -C skill SKILL.md reference scripts
+        run: bun run scripts/package-skill.ts --out dist/plan-presenter-skill.tar.gz
       - name: Collect release files
         shell: bash
         run: |
@@ -64,13 +67,15 @@ jobs:
           ls -R artifacts
           cp artifacts/pp-host-binaries/* dist/
           for d in artifacts/plan-presenter-*; do cp "$d"/* dist/; done
-          ls -la dist
+      - name: Write the update manifest
+        run: bun run scripts/release-manifest.ts --dir dist --tag "${GITHUB_REF_NAME}"
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
+          ls -la dist
           gh release create "${GITHUB_REF_NAME}" dist/* \
             --title "plan-presenter ${GITHUB_REF_NAME}" \
             --generate-notes

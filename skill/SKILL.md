@@ -108,26 +108,32 @@ for them to report it.
 - If `pp` cannot reach the host, run `$PP serve`. It starts the host from the repo
   checkout recorded in `~/.plan-presenter/config.json` (dev installs), otherwise
   from a prebuilt binary in `~/.plan-presenter/bin` that it downloads from GitHub
-  Releases on first use. `$PP update` fetches the latest binary; `$PP stop` stops the host.
+  Releases on first use. `$PP stop` stops the host.
+- plan-presenter keeps itself up to date in the background; you never need to
+  run an update. When `pp` prints `plan-presenter updated X -> Y; re-read
+SKILL.md`, re-read this file before continuing: commands or components may
+  have changed.
 
 ## Command reference
 
 ```
 pp serve [--lan] [--port N]              start the host if not running
 pp stop                                  stop the host started by pp serve
-pp update [--tag vX.Y.Z]                 download the latest prebuilt host binary
-pp version                               CLI / binary / running-host versions
 pp status [<session>]                    host health, or session summary + URL
 pp sessions                              list sessions
 pp new "<title>" [--id x] [--root DIR] [--dir DIR]
 pp page <session> <pageId> [--file F]    write a page (stdin if no --file)
 pp open <session> [--page P]             open the UI in the host's browser
-pp review <session> [--open]             status -> awaiting-review
+pp review <session> [--open] [--force]   status -> awaiting-review (refuses with open render errors)
 pp wait <session> [--timeout 9m] [--any] block until "Send to agent"; prints feedback
+pp errors <session> [--all]              render errors waiting for you
 pp feedback <session> [--open] [--batch N] [--since N] [--json]
 pp reply <session> <id> "<text>"         reply (marks acknowledged)
 pp resolve <session> <id>...             mark resolved
 pp ack <session> <id>...                 mark acknowledged
 pp close <session>                       status -> closed
 pp rm <session>                          delete (or unregister an external dir)
+pp version                               skill / host binary / running host versions
+pp update [--check]                      update now instead of waiting for the background check
+pp auto-update [on|off|status]           background self-update (release installs)
 ```
