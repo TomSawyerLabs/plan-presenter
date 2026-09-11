@@ -5,6 +5,7 @@
       "name": "plan-presenter",
       "devDependencies": {
         "@types/bun": "latest",
+        "@types/node": "^22.20.2",
         "lefthook": "^2.1.12",
         "oxfmt": "^0.67.0",
         "oxlint": "^1.82.0",
@@ -13,7 +14,7 @@
     },
     "apps/desktop": {
       "name": "@plan-presenter/desktop",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "@plan-presenter/host": "workspace:*",
         "@plan-presenter/protocol": "workspace:*",
@@ -26,7 +27,7 @@
     },
     "packages/host": {
       "name": "@plan-presenter/host",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "bin": {
         "pp-host": "./src/cli.ts",
       },
@@ -51,7 +52,7 @@
     },
     "packages/protocol": {
       "name": "@plan-presenter/protocol",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "zod": "^4.1.0",
       },
@@ -61,7 +62,7 @@
     },
     "packages/ui": {
       "name": "@plan-presenter/ui",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "@mdx-js/mdx": "^3.1.1",
         "@mdx-js/react": "^3.1.1",
@@ -82,7 +83,7 @@
     },
     "skill": {
       "name": "@plan-presenter/skill",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "devDependencies": {
         "@types/bun": "latest",
         "typescript": "^5.9.0",

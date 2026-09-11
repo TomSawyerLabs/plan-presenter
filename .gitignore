@@ -17,3 +17,5 @@ examples/**/feedback.json
 packages/host/bin/
 # Electrobun build artifacts (installers, update.json, patches)
 apps/desktop/artifacts/
+# per-task git worktrees (git worktree add .worktrees/<name>)
+.worktrees/
