@@ -11,6 +11,7 @@ import type {
   CreateFeedback,
   Feedback,
   LiveEvent,
+  ReviewerPublic,
   SessionSummary,
   ReportRenderError,
   UpdateFeedback,
@@ -27,8 +28,16 @@ export interface Transport {
   updateFeedback(id: string, feedbackId: string, patch: UpdateFeedback): Promise<Feedback>;
   deleteFeedback(id: string, feedbackId: string): Promise<void>;
   reply(id: string, feedbackId: string, body: string): Promise<Feedback>;
-  /** "Send to agent": batch all pending feedback. */
+  /** "Send to agent": batch all pending feedback (a reviewer's token sends only theirs). */
   send(id: string): Promise<{ batch: number; items: Feedback[] }>;
+  /**
+   * The invited reviewer this transport speaks for, or null on the owner path
+   * (no invite token). See `pp invite`.
+   */
+  me(id: string): Promise<ReviewerPublic | null>;
+  renameReviewer(id: string, reviewerId: string, name: string): Promise<ReviewerPublic>;
+  /** Reviewer says they are done, even with nothing to send; wakes `pp wait`. */
+  submitReview(id: string, reviewerId: string): Promise<ReviewerPublic>;
   openPath(id: string, path: string): Promise<{ action: string; path: string }>;
   /** Report a viewer-side render failure; the host forwards it to the agent. */
   reportError(id: string, input: ReportRenderError): Promise<void>;
@@ -57,10 +66,17 @@ export class TransportError extends Error {
 export interface HttpTransportOptions {
   /** e.g. "" (same origin) or "http://192.168.1.10:27411". */
   baseUrl?: string;
+  /**
+   * Invite token from a `pp invite` link (`?reviewer=<token>`). Sent as
+   * `X-PP-Reviewer` on every request so the host stamps feedback with the
+   * reviewer and limits edits to their own items.
+   */
+  reviewerToken?: string;
 }
 
 export class HttpTransport implements Transport {
   private base: string;
+  private reviewerToken: string | undefined;
   private listeners = new Set<(e: LiveEvent) => void>();
   private statusListeners = new Set<(c: boolean) => void>();
   private ws: WebSocket | null = null;
@@ -74,6 +90,7 @@ export class HttpTransport implements Transport {
 
   constructor(opts: HttpTransportOptions = {}) {
     this.base = (opts.baseUrl ?? "").replace(/\/$/, "");
+    this.reviewerToken = opts.reviewerToken || undefined;
   }
 
   private async req<T>(path: string, init?: RequestInit): Promise<T> {
@@ -81,7 +98,11 @@ export class HttpTransport implements Transport {
     try {
       res = await fetch(`${this.base}${path}`, {
         ...init,
-        headers: { "content-type": "application/json", ...init?.headers },
+        headers: {
+          "content-type": "application/json",
+          ...(this.reviewerToken && { "x-pp-reviewer": this.reviewerToken }),
+          ...init?.headers,
+        },
       });
     } catch (err) {
       // Network-level failure (host down, DNS, CORS): status 0 so callers can
@@ -146,6 +167,22 @@ export class HttpTransport implements Transport {
     return this.req<{ batch: number; items: Feedback[] }>(`/api/sessions/${enc(id)}/send`, {
       method: "POST",
     });
+  }
+  async me(id: string) {
+    if (!this.reviewerToken) return null;
+    return this.req<ReviewerPublic>(`/api/sessions/${enc(id)}/reviewers/me`);
+  }
+  renameReviewer(id: string, reviewerId: string, name: string) {
+    return this.req<ReviewerPublic>(`/api/sessions/${enc(id)}/reviewers/${enc(reviewerId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    });
+  }
+  submitReview(id: string, reviewerId: string) {
+    return this.req<ReviewerPublic>(
+      `/api/sessions/${enc(id)}/reviewers/${enc(reviewerId)}/submit`,
+      { method: "POST" },
+    );
   }
   openPath(id: string, path: string) {
     return this.req<{ action: string; path: string }>("/api/open", {

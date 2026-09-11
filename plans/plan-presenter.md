@@ -166,6 +166,9 @@ Designed so the UI + host packages can later be embedded natively in t3code.
   is ready (right after host start) is missed. Render errors are therefore cleared on every
   recompile with a new hash (any `getPage`), and `pp errors`/`pp review`/`pp wait` fetch the
   session summary first, which compiles every page.
+- **`git diff` showing `Bin` for a `.ts` file means a stray NUL byte.** `state.tsx` had two,
+  from writing a NUL key separator as a raw byte; git classifies any blob with a NUL in its
+  first 8 kB as binary. Use the `"\0"` escape in source. `git diff --text` shows the diff anyway.
 - **Hono's Bun WebSocket adapter hands every event a fresh `WSContext` wrapper.** The host
   tagged the wrapper in `onOpen` and looked for the tag in `onClose`, so closed viewers were
   never removed: `clients` only grew, and the host could never look idle. Found by the
@@ -236,6 +239,15 @@ Designed so the UI + host packages can later be embedded natively in t3code.
   the auto-update E2E passes on the Linux runner as well as Windows. Next: the user pushes
   `v0.2.0` (release.yml packages the skill, writes manifest.json, uploads delta patches).
   Friends on 0.1.0 re-run the install command once.
+- 2026-09-11: `feat/reviewer-invites` rebased onto 94ca640 in `.worktrees/reviewer-invites`;
+  `bun run check` green (87 tests), UI built. Two pre-existing issues fixed on the branch:
+  `packages/ui/src/state.tsx` contained two literal NUL bytes (the render-error dedupe key
+  separator, written as a raw byte instead of the `"\0"` escape) since 8d4b051, so git
+  showed it as binary in every diff; and its big `useMemo` omitted `guarded` from its deps
+  (oxlint `react(memo-dependencies)` warning), now a `useCallback` listed as a dep.
+  `~/.plan-presenter/config.json` records `repoDir` = the main checkout (master), so
+  `pp serve` will not run this branch until it is merged, or `repoDir` is pointed at the
+  worktree for a trial.
 
 ## Open questions for the user
 
@@ -277,3 +289,57 @@ Designed so the UI + host packages can later be embedded natively in t3code.
 - Do not expose any endpoint that runs a shell command or opens arbitrary URIs.
 - Do not let the UI compile MDX in the browser (keep the host as the compiler).
 - Do not commit `examples/demo/feedback.json` or a mutated `examples/demo/session.json`.
+
+## Named reviewers via invite links (2026-09-10)
+
+**Ask (Cameron):** a standard way to collect reviews from other people, each
+identified by a unique URL, so the agent knows who said what.
+
+**Decisions**
+
+- Reviewer records live on the session manifest (`reviewers[]`, manifest
+  version 2; v1 files still parse). The token is the secret; browsers get
+  `ReviewerPublic` (token stripped) via the session summary.
+- Identification is `X-PP-Reviewer: <token>` (or `?reviewer=`) on requests.
+  The UI reads `?reviewer=<token>` from the query string (before the hash) and
+  sends the header on everything. No token = owner path, unchanged. This is
+  attribution, not authentication, consistent with the no-auth decision.
+- Feedback and replies gain an optional `reviewer: {id, name}`; a rename copies
+  the current name onto the reviewer's existing items so `feedback.json` is
+  self-describing.
+- Reviewer permissions: create freely, reply on anyone's item, edit/delete/
+  resolve only their own (403 otherwise). "Send to agent" batches only their
+  pending items and stamps `submittedAt`; `/submit` marks done with nothing to
+  send and wakes `pp wait` (new `reviewer.submitted` live event).
+- Markdown digest: `— Reviewer: <name>` on each item heading, a `By reviewer:`
+  count line, reply attribution.
+- CLI: `pp invite <session> [name ...] [--count N]` and `pp reviewers <session>
+[--json]`; links print in local and LAN forms (LAN only when bound 0.0.0.0).
+- UI: "Reviewing as <name> · change" pill in the header; a name prompt modal on
+  first visit when the invite had no name; reviewer tags on cards ("you" for
+  own); Resolve/Delete hidden on others' items; "I'm done reviewing" button in
+  the sidebar when nothing is pending. No `title=` tooltips anywhere.
+- `Transport` gained `me`, `renameReviewer`, `submitReview`; embedders must
+  implement them (pre-1.0, acceptable).
+
+**Progress**
+
+- [x] protocol + host + tests (`535e83f`, by a background agent that then hit a
+      session rate limit).
+- [x] UI, CLI, docs (this session, follow-up commit on the same branch).
+- [x] Smoke-tested end to end on a scratch host (port 27499): `pp invite` prints
+      local + share links; unnamed invite prompts for a name and the rename
+      lands on the manifest; a reviewer's comment is stamped, tagged "you" in
+      their tab, "Rudy Test" with Reply-only in another reviewer's tab, and
+      Reply/Resolve in the owner tab; "Send to agent" marks them done;
+      `pp feedback --batch 1` shows `— Reviewer: Rudy Test` and the
+      `By reviewer:` line. Note: `lanUrl` picks the first non-internal IPv4,
+      which on this machine is Tailscale (100.64.0.1); pre-existing behaviour.
+- [ ] Cameron reviews `feat/reviewer-invites` (worktree
+      `.worktrees/reviewer-invites`) and merges; reinstall the skill after
+      merge (`bun run skill/scripts/install.ts`) so `pp invite` is available.
+- [x] 2026-09-11: rebased onto master 94ca640 (auto-update, health identity, e2e). Conflicts
+      only in .gitignore, SKILL.md and pp.ts (master moved serve/stop into `_host.ts` and
+      the usage text into a `USAGE` constant; the invite/reviewers commands were re-attached
+      there). `pp wait` now reports `reviewer.submitted` ("Reviewer X marked their review
+      done") and names the reviewer on a batch. Full `bun run check` green after the rebase.

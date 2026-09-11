@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Feedback } from "@plan-presenter/protocol";
 import { useSession } from "../state.tsx";
 import { KIND_ICON, KIND_LABEL } from "./FeedbackComposer.tsx";
+import { reviewerName } from "./SessionView.tsx";
 
 export interface FeedbackSidebarProps {
   focusedId: string | null;
@@ -14,14 +15,18 @@ export interface FeedbackSidebarProps {
 }
 
 export function FeedbackSidebar({ focusedId, onFocus }: FeedbackSidebarProps) {
-  const { session, feedback, pages, setCurrentPage, send } = useSession();
+  const { session, feedback, pages, setCurrentPage, send, reviewer, submitReview } = useSession();
   const [filter, setFilter] = useState<"all" | "open" | "resolved">("all");
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState<number | null>(null);
+  const [marking, setMarking] = useState(false);
 
   // System-reported render errors are for the agent, not the human.
   const human = useMemo(() => feedback.filter((f) => f.author !== "system"), [feedback]);
-  const pending = human.filter((f) => f.batch === null);
+  // A reviewer's "send" only carries their own items, so count only those.
+  const pending = human.filter(
+    (f) => f.batch === null && (!reviewer || f.reviewer?.id === reviewer.id),
+  );
   const visible = useMemo(
     () =>
       human
@@ -94,6 +99,31 @@ export function FeedbackSidebar({ focusedId, onFocus }: FeedbackSidebarProps) {
         {pending.length === 0 && sent === null && (
           <div className="pp-muted pp-small">Click anything on the page to add feedback.</div>
         )}
+        {reviewer &&
+          pending.length === 0 &&
+          (reviewer.submittedAt ? (
+            <div className="pp-status-ok">
+              You are marked as done. You can still add feedback any time.
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="pp-button pp-button-wide"
+              disabled={marking}
+              onClick={async () => {
+                setMarking(true);
+                try {
+                  await submitReview();
+                } catch {
+                  /* shown by the session notice */
+                } finally {
+                  setMarking(false);
+                }
+              }}
+            >
+              I'm done reviewing
+            </button>
+          ))}
       </div>
 
       <div className="pp-sidebar-list">
@@ -145,7 +175,9 @@ function FeedbackCard({
   orphaned: boolean;
   onFocus: () => void;
 }) {
-  const { updateFeedback, deleteFeedback, reply } = useSession();
+  const { updateFeedback, deleteFeedback, reply, reviewer: me } = useSession();
+  // The owner path may act on anything; an invited reviewer only on their own.
+  const own = !me || item.reviewer?.id === me.id;
   const [replyText, setReplyText] = useState("");
   const [replying, setReplying] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -189,6 +221,11 @@ function FeedbackCard({
               : "page"}
         </span>
         {item.batch !== null && <span className="pp-muted pp-small">batch {item.batch}</span>}
+        {item.reviewer && (
+          <span className="pp-tag pp-tag-reviewer">
+            {me && item.reviewer.id === me.id ? "you" : reviewerName(item.reviewer)}
+          </span>
+        )}
         {item.status === "acknowledged" && <span className="pp-tag">agent replied</span>}
         {resolved && <span className="pp-tag pp-tag-ok">resolved</span>}
         {orphaned && <span className="pp-tag pp-tag-warn">block changed</span>}
@@ -204,7 +241,11 @@ function FeedbackCard({
           {item.replies.map((r) => (
             <div key={r.id} className={`pp-reply pp-reply-${r.author}`}>
               <span className="pp-reply-author">
-                {r.author === "agent" ? "🤖 agent" : "🧑 you"}
+                {r.author === "agent"
+                  ? "🤖 agent"
+                  : r.reviewer && !(me && r.reviewer.id === me.id)
+                    ? `🧑 ${reviewerName(r.reviewer)}`
+                    : "🧑 you"}
               </span>{" "}
               {r.body}
             </div>
@@ -234,16 +275,20 @@ function FeedbackCard({
             <button type="button" className="pp-link-button" onClick={() => setReplying(true)}>
               Reply
             </button>
-            <button
-              type="button"
-              className="pp-link-button"
-              onClick={() =>
-                updateFeedback(item.id, { status: resolved ? "open" : "resolved" }).catch(() => {})
-              }
-            >
-              {resolved ? "Reopen" : "Resolve"}
-            </button>
-            {item.batch === null && (
+            {own && (
+              <button
+                type="button"
+                className="pp-link-button"
+                onClick={() =>
+                  updateFeedback(item.id, { status: resolved ? "open" : "resolved" }).catch(
+                    () => {},
+                  )
+                }
+              >
+                {resolved ? "Reopen" : "Resolve"}
+              </button>
+            )}
+            {own && item.batch === null && (
               <button
                 type="button"
                 className="pp-link-button pp-danger"

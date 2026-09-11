@@ -15,6 +15,17 @@ agent ──writes .mdx──▶ session dir ◀──watches── host (Bun) �
 agent ◀── pp wait ─────────────────────────────── host ◀── "Send to agent" ── human
 ```
 
+## Several reviewers
+
+`pp invite <session> "Chris" "Rudy"` mints one private link per person
+(`…/?reviewer=<token>#/s/<id>`). The host stamps feedback that arrives through a
+link with that reviewer's name, limits edits and deletes to their own items,
+sends only their items on "Send to agent", and records when they press
+"I'm done". `pp reviewers <session>` lists who has opened their link. The
+plain URL remains the owner's, with full rights. This is attribution, not
+authentication: the host still has no auth, so share links on trusted
+networks only.
+
 ## Layout
 
 | Path                | What                                                                                                                                                                                                                                           |
