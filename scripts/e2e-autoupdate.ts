@@ -123,14 +123,26 @@ Object.assign(baseEnv, {
   PP_NO_AUTO_UPDATE: "1", // background checks only where a step turns them on
 });
 
-function pp(args: string[], env: Record<string, string> = {}) {
-  const r = Bun.spawnSync([process.execPath, join(skillDir, "scripts", "pp.ts"), ...args], {
+// Async on purpose: the fake release server lives in this process, and
+// Bun.spawnSync blocks the event loop on Linux (it happens to pump it on
+// Windows), so a synchronous pp would wait forever for downloads this process
+// cannot serve.
+async function pp(args: string[], env: Record<string, string> = {}) {
+  const proc = Bun.spawn([process.execPath, join(skillDir, "scripts", "pp.ts"), ...args], {
     env: { ...baseEnv, ...env },
     stdout: "pipe",
     stderr: "pipe",
   });
-  return { code: r.exitCode, stdout: r.stdout.toString(), stderr: r.stderr.toString() };
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  return { code, stdout, stderr };
 }
+
+const show = (r: { stdout: string; stderr: string }) =>
+  [r.stdout.trim(), r.stderr.trim()].filter(Boolean).join("\n  ");
 
 async function health(): Promise<{ execPath?: string; version?: string } | null> {
   try {
@@ -169,8 +181,8 @@ try {
   publish("0.0.1-e2e");
   mkdirSync(skillDir, { recursive: true });
   applySkillBundle(readTarGz(packageSkill("0.0.1-e2e")), skillDir);
-  let r = pp(["serve", "--port", String(port)]);
-  check(r.code === 0, `pp serve downloads and starts the host\n  ${r.stdout.trim()}`);
+  let r = await pp(["serve", "--port", String(port)]);
+  check(r.code === 0, `pp serve downloads and starts the host\n  ${show(r)}`);
   check(runsFrom(await health(), binFor("0.0.1-e2e")), "host runs from bin/0.0.1-e2e");
 
   // 2. New release while someone is viewing: install now, restart later.
@@ -180,7 +192,7 @@ try {
     ws.onerror = rej;
   });
   publish("0.0.2-e2e");
-  r = pp(["auto-update", "now"]);
+  r = await pp(["auto-update", "now"]);
   check(
     /updated 0\.0\.1-e2e -> 0\.0\.2-e2e/.test(r.stdout) && /host restart: pending/.test(r.stdout),
     `update installs; restart deferred while a viewer is connected\n  ${r.stdout.trim().split("\n").pop()}`,
@@ -195,7 +207,7 @@ try {
   const state = JSON.parse(readFileSync(statePath, "utf8")) as { lastCheckAt?: string };
   state.lastCheckAt = new Date(Date.now() - 3_600_000).toISOString(); // pretend the retry interval passed
   writeFileSync(statePath, JSON.stringify(state));
-  r = pp(["status"], { PP_NO_AUTO_UPDATE: "" });
+  r = await pp(["status"], { PP_NO_AUTO_UPDATE: "" });
   check(
     /plan-presenter updated 0\.0\.1-e2e -> 0\.0\.2-e2e/.test(r.stderr),
     "agent gets an update notice",
@@ -209,7 +221,7 @@ try {
     await Bun.sleep(500);
   }
   check(switched, `background updater restarted the idle host into 0.0.2-e2e\n  ${lastLog()}`);
-  r = pp(["status"]);
+  r = await pp(["status"]);
   check(!/plan-presenter updated/.test(r.stderr), "the notice is shown only once");
 
   // Let the background updater release its lock before running another update.
@@ -222,7 +234,7 @@ try {
 
   // 4. A tampered release is refused.
   publish("0.0.3-e2e", { tamperHost: true });
-  r = pp(["auto-update", "now"]);
+  r = await pp(["auto-update", "now"]);
   check(
     /checksum mismatch/.test(r.stdout),
     `tampered release refused\n  ${r.stdout.trim().split("\n").pop()}`,
@@ -231,7 +243,7 @@ try {
   check(runsFrom(await health(), binFor("0.0.2-e2e")), "host unchanged after the refused update");
 
   // 5. Stop.
-  r = pp(["stop"]);
+  r = await pp(["stop"]);
   check(r.code === 0 && (await health()) === null, "pp stop stops the updated host");
   ok = true;
   console.log("\nE2E auto-update: all checks passed");
@@ -244,7 +256,7 @@ try {
       /* none */
     }
   }
-  pp(["stop"]);
+  await pp(["stop"]);
   server.stop(true);
   await Bun.sleep(300);
   try {

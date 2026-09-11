@@ -187,6 +187,10 @@ Designed so the UI + host packages can later be embedded natively in t3code.
 - **`bun-types` has no `windowsHide` for `Bun.spawn`**; detached spawns are what we have.
 - **Root `scripts/` was not covered by any typecheck.** Added `../scripts` to the skill's
   tsconfig include (they are skill release tooling).
+- **`Bun.spawnSync` blocks the event loop on Linux but pumps it on Windows.** The auto-update
+  E2E hosts its fake release server in its own process; with a synchronous `pp()` helper the
+  downloads deadlocked on the Linux runner (first CI run of the E2E) while passing on Windows.
+  The helper is async now. Any test that serves HTTP in-process must spawn children async.
 
 ## Progress log
 
