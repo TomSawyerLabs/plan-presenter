@@ -104,6 +104,12 @@ Designed so the UI + host packages can later be embedded natively in t3code.
 
 ## Findings / gotchas
 
+- **Dev `pp serve` can take >10s to answer on Windows.** Restarting the local host onto
+  0.3.0 printed `host did not become healthy` while the host came up a moment later: the
+  launcher waited a fixed 10s, and a cold `bun run` of the host from the checkout exceeded it.
+  `spawnAndWait` in `skill/scripts/_host.ts` now waits up to 60s for source launches (15s
+  for binaries); it still returns as soon as the process exits, so real failures are not
+  slower. Not released yet; lands in the next tag.
 - **t3code** (`C:\Users\camer\git\t3code`) is Electron 43 + React 19.2 + TanStack
   Router + Effect 4 RPC over WebSocket (`packages/contracts/src/rpc.ts`), Tailwind v4,
   `react-markdown` (no MDX/mermaid/charts). Relevant prior art: assistant citations

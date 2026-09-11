@@ -170,7 +170,11 @@ async function spawnAndWait(
   proc.unref();
   closeSync(logFd);
   writeFileSync(pidPath(), String(proc.pid));
-  for (let i = 0; i < 100; i++) {
+  // A prebuilt binary answers within a second or two; a dev install runs the
+  // host from source and a cold `bun run` on Windows has taken over 10s. The
+  // loop stops as soon as the process exits, so a long ceiling is free.
+  const deadline = Date.now() + (launch.binary ? 15_000 : 60_000);
+  while (Date.now() < deadline) {
     await Bun.sleep(100);
     const h = await healthy(a.url);
     if (h) return { health: h, pid: proc.pid };
