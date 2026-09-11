@@ -98,8 +98,7 @@ Designed so the UI + host packages can later be embedded natively in t3code.
         skill self-update (release channel only), versioned host binaries with idle restart +
         rollback, serve lock, host `/api/health` activity, desktop updater with downgrade guard +
         prompt, release and CI wiring (E2E runs in CI), version 0.2.0. Verified: 78 tests, E2E on
-        Windows, desktop updater against the real v0.1.0 release. Reaches users with the v0.2.0 tag,
-        which the user pushes.
+        Windows, desktop updater against the real v0.1.0 release. Released as v0.2.0 on 2026-09-11 (user go-ahead).
 15. [ ] Next: Blacksmith runners; then public URL + token for HTTPS-fronted hosts.
 
 ## Findings / gotchas
@@ -236,6 +235,12 @@ Designed so the UI + host packages can later be embedded natively in t3code.
   the auto-update E2E passes on the Linux runner as well as Windows. Next: the user pushes
   `v0.2.0` (release.yml packages the skill, writes manifest.json, uploads delta patches).
   Friends on 0.1.0 re-run the install command once.
+- 2026-09-11: v0.2.0 tagged on user go-ahead; release.yml green on all jobs. The release carries
+  manifest.json (sha256 + size for every asset), five host binaries, desktop installers and
+  update tarballs, a delta patch per desktop platform against v0.1.0, and the skill bundle
+  (version.json channel "release"). Clean install from the release on Windows: skill unpacked
+  with system tar, `pp serve` downloaded the host from the v0.2.0 tag (sha256 matches the
+  manifest), `pp auto-update now` reports current, session + UI OK, scratch dirs removed.
 
 ## Open questions for the user
 
