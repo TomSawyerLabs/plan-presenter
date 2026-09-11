@@ -74,7 +74,8 @@ Designed so the UI + host packages can later be embedded natively in t3code.
 10. [x] Launch check of the built desktop app (in-process host answered on 27411, UI bundled), demo session cleaned, committed in 5 commits, skill installed to `~/.claude/skills/plan-presenter`.
 11. [x] Publish to GitHub (TomSawyerLabs/plan-presenter) with CI building on all platforms.
 12. [x] Release path: cross-compiled host binaries with embedded UI, `pp serve` download fallback, tag-driven release workflow (verified locally; CI run for the binaries job in progress).
-13. [ ] Next: first tagged release (user pushes `v0.1.0`), then Blacksmith runners.
+13. [x] v0.1.0 released (tag pushed 2026-09-10 on user request): host binaries for five targets, stable desktop installers, skill tarball. Fresh-machine install verified from the release on Windows.
+14. [ ] Next: Blacksmith runners; then public URL + token for HTTPS-fronted hosts.
 
 ## Findings / gotchas
 
@@ -166,6 +167,9 @@ Designed so the UI + host packages can later be embedded natively in t3code.
   on failure. Per-session write lock after an EPERM race surfaced in testing. Verified in
   the browser end to end (placeholders, reports with line ranges, disconnect/reconnect,
   retry saved).
+- 2026-09-10: v0.1.0 tagged and released via release.yml (all jobs green, GitHub Release with
+  21 assets). Verified from a scratch PP_HOME with no checkout: skill tarball from the release,
+  `pp serve` downloaded `pp-host-windows-x64.exe` (87 MB), host 0.1.0 up, session + UI OK.
 
 ## Open questions for the user
 
