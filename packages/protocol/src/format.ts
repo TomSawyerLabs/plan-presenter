@@ -4,7 +4,7 @@
  * integration that injects feedback into an agent thread.
  */
 
-import type { Feedback, SessionSummary } from "./schemas.ts";
+import type { Feedback, ReviewerRef, SessionSummary } from "./schemas.ts";
 
 export interface FormatOptions {
   /** Session dir, so page paths are absolute and clickable in agent logs. */
@@ -42,6 +42,16 @@ export function formatFeedbackMarkdown(
       .join(", "),
     "",
   );
+  // Who said what, when any item came through a reviewer invite link.
+  if (items.some((f) => f.reviewer)) {
+    const byReviewer = countBy(items, (f) => (f.reviewer ? reviewerLabel(f.reviewer) : "owner"));
+    lines.push(
+      `By reviewer: ${Object.entries(byReviewer)
+        .map(([who, n]) => `${who} (${n})`)
+        .join(", ")}`,
+      "",
+    );
+  }
 
   const byPage = new Map<string, Feedback[]>();
   for (const f of items) byPage.set(f.anchor.pageId, [...(byPage.get(f.anchor.pageId) ?? []), f]);
@@ -60,7 +70,8 @@ export function formatFeedbackMarkdown(
           ? `target #${f.anchor.targetId}`
           : "whole page";
       const status = f.status !== "open" ? ` [${f.status}]` : "";
-      lines.push(`### ${KIND_VERB[f.kind]} · ${where} · id ${f.id}${status}`);
+      const who = f.reviewer ? ` — Reviewer: ${reviewerLabel(f.reviewer)}` : "";
+      lines.push(`### ${KIND_VERB[f.kind]} · ${where} · id ${f.id}${status}${who}`);
       if (f.anchor.block?.excerpt) lines.push(`Block: "${f.anchor.block.excerpt}"`);
       if (f.kind === "error" && f.data && typeof f.data === "object") {
         const d = f.data as { source?: string; detail?: string | null; count?: number };
@@ -81,7 +92,10 @@ export function formatFeedbackMarkdown(
       } else {
         lines.push("");
       }
-      for (const r of f.replies) lines.push(`- ${r.author}: ${r.body.replace(/\n/g, "\n  ")}`);
+      for (const r of f.replies) {
+        const by = r.reviewer ? `${r.author} (${reviewerLabel(r.reviewer)})` : r.author;
+        lines.push(`- ${by}: ${r.body.replace(/\n/g, "\n  ")}`);
+      }
       lines.push("");
     }
   }
@@ -91,6 +105,11 @@ export function formatFeedbackMarkdown(
     "",
   );
   return lines.join("\n");
+}
+
+/** "Chris", or the id when the reviewer never entered a name. */
+export function reviewerLabel(r: ReviewerRef): string {
+  return r.name?.trim() || `unnamed reviewer ${r.id}`;
 }
 
 function countBy<T>(items: T[], key: (t: T) => string): Record<string, number> {

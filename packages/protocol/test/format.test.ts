@@ -110,3 +110,62 @@ describe("formatFeedbackMarkdown render errors", () => {
     expect(md).toContain("```\ngraph TD; A-->\n```");
   });
 });
+
+describe("formatFeedbackMarkdown reviewers", () => {
+  const anchor = {
+    pageId: "01-overview",
+    blockId: "p-1",
+    block: { id: "p-1", type: "paragraph", line: { start: 3, end: 3 }, excerpt: "Intro" },
+    selection: null,
+    targetId: null,
+  };
+
+  test("names the reviewer on each item and reply, and counts per reviewer", () => {
+    const items: Feedback[] = [
+      {
+        ...base,
+        id: "fb_1",
+        kind: "change",
+        body: "Tighten this.",
+        reviewer: { id: "rv_1", name: "Chris" },
+        anchor,
+        replies: [
+          { id: "r1", author: "agent", body: "Done", createdAt: base.createdAt },
+          {
+            id: "r2",
+            author: "human",
+            reviewer: { id: "rv_2", name: "Dana" },
+            body: "Agreed",
+            createdAt: base.createdAt,
+          },
+        ],
+      },
+      {
+        ...base,
+        id: "fb_2",
+        kind: "comment",
+        body: "Fine.",
+        reviewer: { id: "rv_1", name: "Chris" },
+        anchor,
+      },
+      { ...base, id: "fb_3", kind: "approve", body: "", reviewer: { id: "rv_3" }, anchor },
+      { ...base, id: "fb_4", kind: "comment", body: "From the owner.", anchor },
+    ];
+    const md = formatFeedbackMarkdown(session, items);
+    expect(md).toContain("By reviewer: Chris (2), unnamed reviewer rv_3 (1), owner (1)");
+    expect(md).toContain("### CHANGE REQUESTED · lines 3 (paragraph) · id fb_1 — Reviewer: Chris");
+    expect(md).toContain(
+      "### APPROVED · lines 3 (paragraph) · id fb_3 — Reviewer: unnamed reviewer rv_3",
+    );
+    expect(md).toContain("### COMMENT · lines 3 (paragraph) · id fb_4\n");
+    expect(md).toContain("- agent: Done");
+    expect(md).toContain("- human (Dana): Agreed");
+  });
+
+  test("no reviewer line when nothing came through an invite", () => {
+    const md = formatFeedbackMarkdown(session, [
+      { ...base, id: "fb_1", kind: "comment", body: "x", anchor },
+    ]);
+    expect(md).not.toContain("By reviewer:");
+  });
+});

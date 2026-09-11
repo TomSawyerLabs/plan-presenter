@@ -24,15 +24,21 @@ import {
   Feedback,
   FeedbackFile,
   KNOWN_COMPONENTS,
+  MANIFEST_VERSION,
   SessionManifest,
   type Anchor,
   type CreateFeedback,
+  type CreateReviewer,
   type CreateSession,
   type PageSummary,
   type RenderErrorData,
   type ReportRenderError,
+  type Reviewer,
+  type ReviewerPublic,
+  type ReviewerRef,
   type SessionSummary,
   type UpdateFeedback,
+  type UpdateReviewer,
   type UpdateSession,
 } from "@plan-presenter/protocol";
 import { compilePage, hashSource } from "./compile.ts";
@@ -42,6 +48,10 @@ export class NotFound extends Error {
 }
 export class Conflict extends Error {
   override name = "Conflict";
+}
+/** A reviewer token tried to touch something that is not theirs. */
+export class Forbidden extends Error {
+  override name = "Forbidden";
 }
 
 interface Registry {
@@ -56,6 +66,26 @@ function now(): string {
 
 function newId(prefix: string): string {
   return `${prefix}_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+}
+
+/** 24 random bytes as base64url: 32 chars, safe in a URL without encoding. */
+function newToken(): string {
+  return Buffer.from(crypto.getRandomValues(new Uint8Array(24))).toString("base64url");
+}
+
+/** What gets stamped onto feedback: the reviewer's id and current name. */
+export function reviewerRef(r: Reviewer): ReviewerRef {
+  return r.name === undefined ? { id: r.id } : { id: r.id, name: r.name };
+}
+
+export function publicReviewer({ token: _token, ...rest }: Reviewer): ReviewerPublic {
+  return rest;
+}
+
+/** Ownership rule for token-bearing requests: only your own items. */
+function assertOwner(item: Feedback, reviewer: Reviewer | undefined, verb: string): void {
+  if (reviewer && item.reviewer?.id !== reviewer.id)
+    throw new Forbidden(`reviewer ${reviewer.id} may not ${verb} feedback ${item.id}`);
 }
 
 async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
@@ -96,9 +126,13 @@ export class SessionStore {
     const prev = this.chains.get(id) ?? Promise.resolve();
     const next = prev.catch(() => undefined).then(fn);
     this.chains.set(id, next);
-    void next.finally(() => {
-      if (this.chains.get(id) === next) this.chains.delete(id);
-    });
+    // The caller handles `next`'s rejection; this derived promise must not
+    // re-raise it as an unhandled rejection.
+    void next
+      .finally(() => {
+        if (this.chains.get(id) === next) this.chains.delete(id);
+      })
+      .catch(() => undefined);
     return next;
   }
 
@@ -183,6 +217,7 @@ export class SessionStore {
     await mkdir(join(dir, "assets"), { recursive: true });
     const ts = now();
     const manifest: SessionManifest = {
+      version: MANIFEST_VERSION,
       id,
       title: input.title,
       status: "drafting",
@@ -191,6 +226,7 @@ export class SessionStore {
       allowedRoots: input.allowedRoots.map((r) => resolve(r)),
       pages: [],
       meta: input.meta,
+      reviewers: [],
     };
     await this.writeManifest(manifest);
     await this.writeFeedbackFile(id, { version: 1, lastBatch: 0, items: [] });
@@ -256,7 +292,95 @@ export class SessionStore {
         openFeedback: open.filter((f) => f.anchor.pageId === pid).length,
       });
     }
-    return { ...m, dir: this.sessionDir(id), pageSummaries, openFeedback: open.length };
+    return {
+      ...m,
+      dir: this.sessionDir(id),
+      pageSummaries,
+      openFeedback: open.length,
+      // Browsers get the list but never the tokens.
+      reviewers: m.reviewers.map(publicReviewer),
+    };
+  }
+
+  // ------------------------------------------------------------ reviewers
+
+  async listReviewers(id: string): Promise<Reviewer[]> {
+    return (await this.readManifest(id)).reviewers;
+  }
+
+  /** Resolve an invite token for a session; null when it is not one of ours. */
+  async findReviewerByToken(id: string, token: string): Promise<Reviewer | null> {
+    const m = await this.readManifest(id);
+    return m.reviewers.find((r) => r.token === token) ?? null;
+  }
+
+  createReviewer(id: string, input: CreateReviewer): Promise<Reviewer> {
+    return this.locked(id, async () => {
+      const m = await this.readManifest(id);
+      const ts = now();
+      const reviewer: Reviewer = {
+        id: newId("rv"),
+        token: newToken(),
+        ...(input.name !== undefined && { name: input.name }),
+        createdAt: ts,
+      };
+      m.reviewers.push(reviewer);
+      m.updatedAt = ts;
+      await this.writeManifest(m);
+      return reviewer;
+    });
+  }
+
+  /**
+   * Rename a reviewer. The name is copied onto their existing feedback and
+   * replies too, so feedback.json stays self-describing for agents reading it
+   * directly.
+   */
+  updateReviewer(id: string, reviewerId: string, patch: UpdateReviewer): Promise<Reviewer> {
+    return this.locked(id, async () => {
+      const m = await this.readManifest(id);
+      const r = m.reviewers.find((x) => x.id === reviewerId);
+      if (!r) throw new NotFound(`reviewer ${reviewerId}`);
+      r.name = patch.name;
+      m.updatedAt = now();
+      await this.writeManifest(m);
+      const file = await this.readFeedbackFile(id);
+      let changed = false;
+      for (const f of file.items) {
+        if (f.reviewer?.id === reviewerId) {
+          f.reviewer = reviewerRef(r);
+          changed = true;
+        }
+        for (const rep of f.replies) {
+          if (rep.reviewer?.id === reviewerId) {
+            rep.reviewer = reviewerRef(r);
+            changed = true;
+          }
+        }
+      }
+      if (changed) await this.writeFeedbackFile(id, file);
+      return r;
+    });
+  }
+
+  /** Record that a reviewer opened their link (writes only lastSeenAt). */
+  markReviewerSeen(id: string, reviewerId: string): Promise<void> {
+    return this.locked(id, () => this.touch(id, { reviewerId }));
+  }
+
+  /** The reviewer says they are done (with or without feedback to send). */
+  submitReview(id: string, reviewerId: string): Promise<Reviewer> {
+    return this.locked(id, async () => {
+      const m = await this.readManifest(id);
+      const r = m.reviewers.find((x) => x.id === reviewerId);
+      if (!r) throw new NotFound(`reviewer ${reviewerId}`);
+      const ts = now();
+      r.submittedAt = ts;
+      r.lastSeenAt = ts;
+      m.updatedAt = ts;
+      await this.writeManifest(m);
+      return r;
+    });
   }
 
   // ---------------------------------------------------------------- pages
@@ -533,11 +657,21 @@ export class SessionStore {
     return n;
   }
 
-  createFeedback(id: string, input: CreateFeedback): Promise<Feedback> {
-    return this.locked(id, () => this.createFeedbackUnlocked(id, input));
+  /**
+   * The optional `reviewer` on the mutators below is the resolved invite-token
+   * holder. With one, new items/replies are stamped with `{id, name}`, edits
+   * and deletes are limited to that reviewer's own items, and "send" batches
+   * only their items. Without one (the owner path) behaviour is unchanged.
+   */
+  createFeedback(id: string, input: CreateFeedback, reviewer?: Reviewer): Promise<Feedback> {
+    return this.locked(id, () => this.createFeedbackUnlocked(id, input, reviewer));
   }
 
-  private async createFeedbackUnlocked(id: string, input: CreateFeedback): Promise<Feedback> {
+  private async createFeedbackUnlocked(
+    id: string,
+    input: CreateFeedback,
+    reviewer?: Reviewer,
+  ): Promise<Feedback> {
     const file = await this.readFeedbackFile(id);
     const ts = now();
     const item: Feedback = Feedback.parse({
@@ -546,6 +680,7 @@ export class SessionStore {
       kind: input.kind,
       status: "open",
       author: input.author,
+      ...(reviewer && input.author === "human" && { reviewer: reviewerRef(reviewer) }),
       anchor: input.anchor as Anchor,
       body: input.body,
       data: input.data,
@@ -556,38 +691,47 @@ export class SessionStore {
     });
     file.items.push(item);
     await this.writeFeedbackFile(id, file);
-    await this.touch(id);
+    await this.touch(id, reviewer && { reviewerId: reviewer.id });
     return item;
   }
 
-  updateFeedback(id: string, feedbackId: string, patch: UpdateFeedback): Promise<Feedback> {
-    return this.locked(id, () => this.updateFeedbackUnlocked(id, feedbackId, patch));
+  updateFeedback(
+    id: string,
+    feedbackId: string,
+    patch: UpdateFeedback,
+    reviewer?: Reviewer,
+  ): Promise<Feedback> {
+    return this.locked(id, () => this.updateFeedbackUnlocked(id, feedbackId, patch, reviewer));
   }
 
   private async updateFeedbackUnlocked(
     id: string,
     feedbackId: string,
     patch: UpdateFeedback,
+    reviewer?: Reviewer,
   ): Promise<Feedback> {
     const file = await this.readFeedbackFile(id);
     const item = file.items.find((f) => f.id === feedbackId);
     if (!item) throw new NotFound(`feedback ${feedbackId}`);
+    assertOwner(item, reviewer, "edit");
     if (patch.body !== undefined) item.body = patch.body;
     if (patch.kind !== undefined) item.kind = patch.kind;
     if (patch.status !== undefined) item.status = patch.status;
     item.updatedAt = now();
     await this.writeFeedbackFile(id, file);
-    await this.touch(id);
+    await this.touch(id, reviewer && { reviewerId: reviewer.id });
     return item;
   }
 
-  deleteFeedback(id: string, feedbackId: string): Promise<void> {
+  deleteFeedback(id: string, feedbackId: string, reviewer?: Reviewer): Promise<void> {
     return this.locked(id, async () => {
       const file = await this.readFeedbackFile(id);
       const idx = file.items.findIndex((f) => f.id === feedbackId);
       if (idx < 0) throw new NotFound(`feedback ${feedbackId}`);
+      assertOwner(file.items[idx]!, reviewer, "delete");
       file.items.splice(idx, 1);
       await this.writeFeedbackFile(id, file);
+      if (reviewer) await this.touch(id, { reviewerId: reviewer.id });
     });
   }
 
@@ -596,8 +740,9 @@ export class SessionStore {
     feedbackId: string,
     author: "human" | "agent",
     body: string,
+    reviewer?: Reviewer,
   ): Promise<Feedback> {
-    return this.locked(id, () => this.addReplyUnlocked(id, feedbackId, author, body));
+    return this.locked(id, () => this.addReplyUnlocked(id, feedbackId, author, body, reviewer));
   }
 
   private async addReplyUnlocked(
@@ -605,41 +750,67 @@ export class SessionStore {
     feedbackId: string,
     author: "human" | "agent",
     body: string,
+    reviewer?: Reviewer,
   ): Promise<Feedback> {
     const file = await this.readFeedbackFile(id);
     const item = file.items.find((f) => f.id === feedbackId);
     if (!item) throw new NotFound(`feedback ${feedbackId}`);
-    item.replies.push({ id: newId("r"), author, body, createdAt: now() });
+    // Replies are conversation, not edits: a reviewer may reply on anyone's item.
+    item.replies.push({
+      id: newId("r"),
+      author,
+      ...(reviewer && author === "human" && { reviewer: reviewerRef(reviewer) }),
+      body,
+      createdAt: now(),
+    });
     if (author === "agent" && item.status === "open") item.status = "acknowledged";
     item.updatedAt = now();
     await this.writeFeedbackFile(id, file);
-    await this.touch(id);
+    await this.touch(id, reviewer && { reviewerId: reviewer.id });
     return item;
   }
 
   /**
    * "Send to agent": stamp every un-batched item with a new batch number and
    * flip the session to `reviewed`. Returns the batch number and its items.
+   * For a reviewer, only their own pending items go, and they are marked
+   * submitted.
    */
-  sendBatch(id: string): Promise<{ batch: number; items: Feedback[] }> {
+  sendBatch(id: string, reviewer?: Reviewer): Promise<{ batch: number; items: Feedback[] }> {
     return this.locked(id, async () => {
       const file = await this.readFeedbackFile(id);
       // System-reported render errors reach the agent on their own; they are
       // never part of a human batch.
-      const pending = file.items.filter((f) => f.batch === null && f.author !== "system");
+      const pending = file.items.filter(
+        (f) =>
+          f.batch === null &&
+          f.author !== "system" &&
+          (!reviewer || f.reviewer?.id === reviewer.id),
+      );
       const batch = file.lastBatch + 1;
       for (const f of pending) f.batch = batch;
       file.lastBatch = batch;
       await this.writeFeedbackFile(id, file);
       await this.applySessionPatch(id, { status: "reviewed" });
+      if (reviewer) await this.touch(id, { reviewerId: reviewer.id, submitted: true });
       return { batch, items: pending };
     });
   }
 
-  private async touch(id: string): Promise<void> {
+  /** Bump updatedAt; with `mark`, also record that a reviewer was here (or is done). */
+  private async touch(
+    id: string,
+    mark?: { reviewerId: string; submitted?: boolean },
+  ): Promise<void> {
     try {
       const m = await this.readManifest(id);
-      m.updatedAt = now();
+      const ts = now();
+      m.updatedAt = ts;
+      const r = mark && m.reviewers.find((x) => x.id === mark.reviewerId);
+      if (r) {
+        r.lastSeenAt = ts;
+        if (mark?.submitted) r.submittedAt = ts;
+      }
       await this.writeManifest(m);
     } catch {
       /* session may be mid-delete */
