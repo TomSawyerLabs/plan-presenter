@@ -1,6 +1,6 @@
 {
   "name": "@plan-presenter/desktop",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Thin Electrobun shell: runs the plan-presenter host in-process and opens the UI in a native window.",
   "type": "module",

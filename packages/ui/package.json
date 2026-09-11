@@ -1,6 +1,6 @@
 {
   "name": "@plan-presenter/ui",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "plan-presenter web UI: renders MDX sessions with click-anywhere inline feedback. Also exported as an embeddable React component.",
   "type": "module",

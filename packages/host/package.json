@@ -1,6 +1,6 @@
 {
   "name": "@plan-presenter/host",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "plan-presenter host: watches session directories, compiles MDX pages, serves the UI over HTTP/WebSocket, and stores feedback.",
   "bin": {

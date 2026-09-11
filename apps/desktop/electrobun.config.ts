@@ -11,7 +11,7 @@ export default {
   app: {
     name: "plan-presenter",
     identifier: "com.tacklind.plan-presenter",
-    version: "0.2.0",
+    version: "0.3.0",
     description: "Agents present plans; humans click to give feedback.",
   },
   build: {

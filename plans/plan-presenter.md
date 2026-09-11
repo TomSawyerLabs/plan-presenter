@@ -99,7 +99,8 @@ Designed so the UI + host packages can later be embedded natively in t3code.
         rollback, serve lock, host `/api/health` activity, desktop updater with downgrade guard +
         prompt, release and CI wiring (E2E runs in CI), version 0.2.0. Verified: 78 tests, E2E on
         Windows, desktop updater against the real v0.1.0 release. Released as v0.2.0 on 2026-09-11 (user go-ahead).
-15. [ ] Next: Blacksmith runners; then public URL + token for HTTPS-fronted hosts.
+15. [x] Named reviewers via invite links (branch `feat/reviewer-invites` from another session, reviewed and merged as 9a251ff; see the section below). Shipped as v0.3.0.
+16. [ ] Next: Blacksmith runners; then public URL + token for HTTPS-fronted hosts.
 
 ## Findings / gotchas
 
@@ -340,9 +341,8 @@ identified by a unique URL, so the agent knows who said what.
       `pp feedback --batch 1` shows `— Reviewer: Rudy Test` and the
       `By reviewer:` line. Note: `lanUrl` picks the first non-internal IPv4,
       which on this machine is Tailscale (100.64.0.1); pre-existing behaviour.
-- [ ] Cameron reviews `feat/reviewer-invites` (worktree
-      `.worktrees/reviewer-invites`) and merges; reinstall the skill after
-      merge (`bun run skill/scripts/install.ts`) so `pp invite` is available.
+- [x] 2026-09-11: reviewed (host/protocol diff read in full) and merged into master as 9a251ff on
+      Cameron's go-ahead ("take its improvements and ship them in v0.3.0"); dev skill reinstalled.
 - [x] 2026-09-11: rebased onto master 94ca640 (auto-update, health identity, e2e). Conflicts
       only in .gitignore, SKILL.md and pp.ts (master moved serve/stop into `_host.ts` and
       the usage text into a `USAGE` constant; the invite/reviewers commands were re-attached

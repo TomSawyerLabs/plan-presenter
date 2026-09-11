@@ -1,6 +1,6 @@
 {
   "name": "plan-presenter",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Agents present rich plans/data to a human; the human clicks anywhere to leave inline feedback that flows back to the agent.",
   "workspaces": [
