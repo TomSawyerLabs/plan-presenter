@@ -254,6 +254,16 @@ Designed so the UI + host packages can later be embedded natively in t3code.
   `~/.plan-presenter/config.json` records `repoDir` = the main checkout (master), so
   `pp serve` will not run this branch until it is merged, or `repoDir` is pointed at the
   worktree for a trial.
+- 2026-09-11: v0.3.0 released. Merge 9a251ff, version bump 191e617, CI green, tag on user
+  go-ahead ("ship them in v0.3.0"); release.yml green, all 27 assets present, latest
+  manifest.json reports 0.3.0. Invite flow smoke-tested against the checkout (mint links,
+  reviewer feedback stamped with the name, per-reviewer `/send`, formatter `By reviewer:` +
+  `— Reviewer:` lines, 403 on another reviewer's item). Cross-release auto-update verified in
+  a scratch PP_HOME: 0.2.0 release skill + `pp serve` fetched host 0.3.0 (first use pulls
+  latest) and the detached updater upgraded the skill files to 0.3.0 (update-state.json
+  `installed.from: 0.2.0`, `hostRestart: none`); the updated SKILL.md/pp.ts carry `invite` /
+  `reviewers`. Dev skill on this machine reinstalled. `.worktrees/reviewer-invites` left
+  in place for the session that owns it.
 
 ## Open questions for the user
 
