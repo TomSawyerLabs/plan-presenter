@@ -25,6 +25,7 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/node": "^22.20.2",
     "lefthook": "^2.1.12",
     "oxfmt": "^0.67.0",
     "oxlint": "^1.82.0",

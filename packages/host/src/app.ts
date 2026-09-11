@@ -6,7 +6,7 @@
  * wrap the same core in its own Effect services instead of mounting this app.
  */
 
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import { createBunWebSocket } from "hono/bun";
 import type { ServerWebSocket } from "bun";
@@ -14,17 +14,27 @@ import { resolve } from "node:path";
 import {
   CreateFeedback,
   CreateReply,
+  CreateReviewer,
   CreateSession,
   OpenPathRequest,
   ReportRenderError,
   UpdateFeedback,
+  UpdateReviewer,
   UpdateSession,
   formatFeedbackMarkdown,
   type LiveEvent,
+  type Reviewer,
 } from "@plan-presenter/protocol";
 import { z } from "zod";
 import { openInFileManager, OpenRefused } from "./open.ts";
-import { Conflict, NotFound, SessionStore } from "./store.ts";
+import {
+  Conflict,
+  Forbidden,
+  NotFound,
+  SessionStore,
+  publicReviewer,
+  reviewerRef,
+} from "./store.ts";
 import { SessionWatcher } from "./watcher.ts";
 import { uiFilesFromDir, type UiFiles } from "./ui-files.ts";
 import pkg from "../package.json" with { type: "json" };
@@ -123,9 +133,31 @@ export async function createHost(opts: HostOptions): Promise<Host> {
   const app = new Hono();
   app.use("/api/*", cors());
 
+  /**
+   * Invite-token resolution. `X-PP-Reviewer: <token>` (or `?reviewer=<token>`)
+   * names the reviewer making the request; the token must belong to this
+   * session. No token is the owner path, which behaves as it always has: this
+   * is attribution, not authentication (the host has none; see README).
+   */
+  const reviewerFor = async (c: Context, id: string): Promise<Reviewer | undefined> => {
+    const token = c.req.header("x-pp-reviewer") ?? c.req.query("reviewer");
+    if (!token) return undefined;
+    const r = await store.findReviewerByToken(id, token);
+    if (!r) throw new Forbidden("this review link is not valid for this session");
+    return r;
+  };
+
+  /** A token may only act on its own reviewer record; the owner path may act on any. */
+  const ownReviewer = async (c: Context, id: string, rid: string) => {
+    const me = await reviewerFor(c, id);
+    if (me && me.id !== rid) throw new Forbidden("this review link belongs to another reviewer");
+    return me;
+  };
+
   app.onError((err, c) => {
     if (err instanceof NotFound) return c.json({ error: err.message }, 404);
     if (err instanceof Conflict) return c.json({ error: err.message }, 409);
+    if (err instanceof Forbidden) return c.json({ error: err.message }, 403);
     if (err instanceof OpenRefused) return c.json({ error: err.message }, 403);
     if (err instanceof z.ZodError)
       return c.json({ error: "invalid request", issues: err.issues }, 400);
@@ -209,6 +241,55 @@ export async function createHost(opts: HostOptions): Promise<Host> {
     return c.json({ ok: true });
   });
 
+  // ------------------------------------------------------------ reviewers
+  // The agent's API for invites. Tokens are returned to the owner path only.
+  app.get("/api/sessions/:id/reviewers", async (c) => {
+    const id = c.req.param("id");
+    const me = await reviewerFor(c, id);
+    const list = await store.listReviewers(id);
+    return c.json(me ? list.map(publicReviewer) : list);
+  });
+
+  app.post("/api/sessions/:id/reviewers", async (c) => {
+    const id = c.req.param("id");
+    const raw = await c.req.text();
+    const body = CreateReviewer.parse(raw.trim() ? JSON.parse(raw) : {});
+    const r = await store.createReviewer(id, body);
+    broadcast({ type: "session.changed", sessionId: id });
+    return c.json(r, 201);
+  });
+
+  /** The record behind the token on this request (what the UI shows as "Reviewing as"). */
+  app.get("/api/sessions/:id/reviewers/me", async (c) => {
+    const id = c.req.param("id");
+    const me = await reviewerFor(c, id);
+    if (!me) throw new NotFound("no review token on this request");
+    await store.markReviewerSeen(id, me.id);
+    return c.json(publicReviewer(me));
+  });
+
+  app.patch("/api/sessions/:id/reviewers/:rid", async (c) => {
+    const id = c.req.param("id");
+    const rid = c.req.param("rid");
+    const me = await ownReviewer(c, id, rid);
+    const r = await store.updateReviewer(id, rid, UpdateReviewer.parse(await c.req.json()));
+    broadcast({ type: "session.changed", sessionId: id });
+    // The name is copied onto their items, so viewers refresh feedback too.
+    broadcast({ type: "feedback.changed", sessionId: id, feedbackId: "*" });
+    return c.json(me ? publicReviewer(r) : r);
+  });
+
+  /** Reviewer says they are done; wakes `pp wait` even with nothing to send. */
+  app.post("/api/sessions/:id/reviewers/:rid/submit", async (c) => {
+    const id = c.req.param("id");
+    const rid = c.req.param("rid");
+    const me = await ownReviewer(c, id, rid);
+    const r = await store.submitReview(id, rid);
+    broadcast({ type: "reviewer.submitted", sessionId: id, reviewer: reviewerRef(r) });
+    broadcast({ type: "session.changed", sessionId: id });
+    return c.json(me ? publicReviewer(r) : r);
+  });
+
   // ---------------------------------------------------------------- pages
   app.get("/api/sessions/:id/pages", async (c) => {
     const id = c.req.param("id");
@@ -271,7 +352,7 @@ export async function createHost(opts: HostOptions): Promise<Host> {
   app.post("/api/sessions/:id/feedback", async (c) => {
     const id = c.req.param("id");
     const body = CreateFeedback.parse(await c.req.json());
-    const item = await store.createFeedback(id, body);
+    const item = await store.createFeedback(id, body, await reviewerFor(c, id));
     broadcast({ type: "feedback.changed", sessionId: id, feedbackId: item.id });
     return c.json(item, 201);
   });
@@ -279,7 +360,8 @@ export async function createHost(opts: HostOptions): Promise<Host> {
   app.patch("/api/sessions/:id/feedback/:fid", async (c) => {
     const id = c.req.param("id");
     const fid = c.req.param("fid");
-    const item = await store.updateFeedback(id, fid, UpdateFeedback.parse(await c.req.json()));
+    const patch = UpdateFeedback.parse(await c.req.json());
+    const item = await store.updateFeedback(id, fid, patch, await reviewerFor(c, id));
     broadcast({ type: "feedback.changed", sessionId: id, feedbackId: fid });
     return c.json(item);
   });
@@ -287,7 +369,7 @@ export async function createHost(opts: HostOptions): Promise<Host> {
   app.delete("/api/sessions/:id/feedback/:fid", async (c) => {
     const id = c.req.param("id");
     const fid = c.req.param("fid");
-    await store.deleteFeedback(id, fid);
+    await store.deleteFeedback(id, fid, await reviewerFor(c, id));
     broadcast({ type: "feedback.changed", sessionId: id, feedbackId: fid });
     return c.json({ ok: true });
   });
@@ -296,7 +378,7 @@ export async function createHost(opts: HostOptions): Promise<Host> {
     const id = c.req.param("id");
     const fid = c.req.param("fid");
     const { author, body } = CreateReply.parse(await c.req.json());
-    const item = await store.addReply(id, fid, author, body);
+    const item = await store.addReply(id, fid, author, body, await reviewerFor(c, id));
     broadcast({ type: "feedback.changed", sessionId: id, feedbackId: fid });
     return c.json(item);
   });
@@ -309,18 +391,25 @@ export async function createHost(opts: HostOptions): Promise<Host> {
     return c.json(r, r.created ? 201 : 200);
   });
 
-  /** Human pressed "Send to agent". */
+  /** Human pressed "Send to agent". A reviewer's token sends only their items. */
   app.post("/api/sessions/:id/send", async (c) => {
     const id = c.req.param("id");
-    const result = await store.sendBatch(id);
-    broadcast({ type: "feedback.batch", sessionId: id, batch: result.batch });
+    const me = await reviewerFor(c, id);
+    const result = await store.sendBatch(id, me);
+    broadcast({
+      type: "feedback.batch",
+      sessionId: id,
+      batch: result.batch,
+      ...(me && { reviewer: reviewerRef(me) }),
+    });
     broadcast({ type: "session.changed", sessionId: id });
     return c.json(result);
   });
 
   /**
-   * Long-poll for the agent CLI: resolves when a feedback batch is sent (or
-   * any feedback changes if `any=1`), or after `timeout` ms with `{timedOut}`.
+   * Long-poll for the agent CLI: resolves when a feedback batch is sent, a
+   * render error appears, a reviewer marks themselves done (or any feedback
+   * changes if `any=1`), or after `timeout` ms with `{timedOut}`.
    */
   app.get("/api/sessions/:id/wait", async (c) => {
     const id = c.req.param("id");
@@ -338,6 +427,7 @@ export async function createHost(opts: HostOptions): Promise<Host> {
         if (
           e.type === "feedback.batch" ||
           e.type === "render.error" ||
+          e.type === "reviewer.submitted" ||
           (any && e.type === "feedback.changed")
         ) {
           clearTimeout(timer);

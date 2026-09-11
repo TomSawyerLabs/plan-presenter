@@ -4,10 +4,11 @@
  */
 
 import { useState } from "react";
-import type { Feedback, SessionStatus } from "@plan-presenter/protocol";
+import type { Feedback, ReviewerRef, SessionStatus } from "@plan-presenter/protocol";
 import { useSession } from "../state.tsx";
 import { FeedbackSidebar } from "./FeedbackSidebar.tsx";
 import { PageView } from "./PageView.tsx";
+import { ReviewerNamePrompt } from "./ReviewerNamePrompt.tsx";
 
 const STATUS_LABEL: Record<SessionStatus, string> = {
   drafting: "Agent is drafting",
@@ -31,9 +32,13 @@ export function SessionView({ onBack }: SessionViewProps) {
     feedback,
     notice,
     dismissNotice,
+    reviewer,
   } = useSession();
   const [focusedRaw, setFocused] = useState<Feedback | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 900);
+  const [renaming, setRenaming] = useState(false);
+  // An invited reviewer with no name yet is asked before anything else.
+  const askName = reviewer !== null && (renaming || !reviewer.name);
 
   // Focus only applies while its page is the current one.
   const focused = focusedRaw && focusedRaw.anchor.pageId === currentPageId ? focusedRaw : null;
@@ -61,6 +66,15 @@ export function SessionView({ onBack }: SessionViewProps) {
         )}
         <h1 className="pp-title">{session.title}</h1>
         <span className={`pp-pill pp-pill-${session.status}`}>{STATUS_LABEL[session.status]}</span>
+        {reviewer && (
+          <button
+            type="button"
+            className="pp-pill pp-pill-reviewer"
+            onClick={() => setRenaming(true)}
+          >
+            Reviewing as {reviewerName(reviewer)} · change
+          </button>
+        )}
         <span className="pp-spacer" />
         <span className={`pp-pill ${connected ? "pp-pill-ok" : "pp-pill-warn"}`}>
           {connected ? "live" : "reconnecting…"}
@@ -132,6 +146,17 @@ export function SessionView({ onBack }: SessionViewProps) {
       </main>
 
       {sidebarOpen && <FeedbackSidebar focusedId={focused?.id ?? null} onFocus={setFocused} />}
+      {askName && reviewer && (
+        <ReviewerNamePrompt
+          reviewer={reviewer}
+          onDone={() => setRenaming(false)}
+          cancellable={!!reviewer.name}
+        />
+      )}
     </div>
   );
+}
+
+export function reviewerName(r: ReviewerRef): string {
+  return r.name?.trim() || "unnamed reviewer";
 }

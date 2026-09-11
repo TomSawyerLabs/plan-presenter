@@ -63,9 +63,20 @@ const USAGE = `pp - agent CLI for plan-presenter
   pp ack <session> <id>...                 mark items acknowledged
   pp close <session>                       close the session
   pp rm <session>                          delete (or unregister) a session
+  pp invite <session> [name ...] [--count N]   mint private review links, one per person
+  pp reviewers <session> [--json]          list invited reviewers: name, done?, link
   pp version                               skill, host binary and running host versions
   pp update [--check] [--tag vX.Y.Z]       update now (release installs also update themselves)
   pp auto-update [on|off|status|now]       background self-update for release installs`;
+
+interface ReviewerRecord {
+  id: string;
+  token: string;
+  name?: string;
+  createdAt: string;
+  lastSeenAt?: string;
+  submittedAt?: string;
+}
 
 interface SessionSummary {
   id: string;
@@ -126,6 +137,30 @@ async function restartInto(host: CurrentHost): Promise<void> {
 
 function sessionUrl(id: string, pageId?: string): string {
   return `${hostUrl()}/#/s/${encodeURIComponent(id)}${pageId ? `/${encodeURIComponent(pageId)}` : ""}`;
+}
+
+/** An invite link: the token rides in the query so the UI can attach it to every request. */
+function reviewerUrl(base: string, id: string, token: string): string {
+  return `${base}/?reviewer=${encodeURIComponent(token)}#/s/${encodeURIComponent(id)}`;
+}
+
+/** The base a person on another machine should use, when the host is bound to the LAN. */
+async function shareBase(): Promise<string | null> {
+  const cfg = loadConfig();
+  if (cfg.bind !== "0.0.0.0") return null;
+  return lanUrl(Number(cfg.port ?? DEFAULT_PORT));
+}
+
+function describeReviewer(id: string, r: ReviewerRecord, lan: string | null): string {
+  const who = r.name ?? "(no name yet: they will be asked on first visit)";
+  const state = r.submittedAt
+    ? `done ${r.submittedAt}`
+    : r.lastSeenAt
+      ? `opened, last seen ${r.lastSeenAt}`
+      : "not opened yet";
+  const lines = [`${r.id}  ${who}  [${state}]`, `  local: ${reviewerUrl(hostUrl(), id, r.token)}`];
+  if (lan) lines.push(`  share: ${reviewerUrl(lan, id, r.token)}`);
+  return lines.join("\n");
 }
 
 function summarise(s: SessionSummary): string {
@@ -478,7 +513,10 @@ async function main(): Promise<void> {
       let failures = 0;
       while (Date.now() < deadline) {
         const slice = Math.min(25_000, deadline - Date.now());
-        let r: { timedOut: boolean; event: { type: string; batch?: number } | null };
+        let r: {
+          timedOut: boolean;
+          event: { type: string; batch?: number; reviewer?: { id: string; name?: string } } | null;
+        };
         try {
           r = await api(
             `/api/sessions/${encodeURIComponent(id)}/wait?timeout=${slice}${any ? "&any=1" : ""}`,
@@ -498,6 +536,12 @@ async function main(): Promise<void> {
           continue;
         }
         if (!r.timedOut && r.event) {
+          const who = r.event.reviewer ? (r.event.reviewer.name ?? r.event.reviewer.id) : null;
+          if (r.event.type === "reviewer.submitted") {
+            out(`Reviewer ${who} marked their review done; nothing new to read from them.`);
+            return;
+          }
+          if (who) note(`batch #${r.event.batch} from reviewer ${who}`);
           const q =
             r.event.type === "render.error"
               ? "?kind=error&status=open&format=md"
@@ -584,6 +628,38 @@ async function main(): Promise<void> {
       const id = need(1, "session");
       await api(`/api/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
       out(`removed ${id}`);
+      return;
+    }
+
+    case "invite": {
+      await ensureHost();
+      const id = need(1, "session");
+      const names = args.slice(2);
+      const count = names.length || Math.max(1, Number(str(flags.count) ?? 1));
+      const lan = await shareBase();
+      for (let i = 0; i < count; i++) {
+        const name = names[i];
+        const r = await api<ReviewerRecord>(`/api/sessions/${encodeURIComponent(id)}/reviewers`, {
+          method: "POST",
+          body: JSON.stringify(name ? { name } : {}),
+        });
+        out(describeReviewer(id, r, lan));
+      }
+      if (!lan)
+        out(
+          "\n(host is bound to localhost; restart with `pp serve --lan` to get a link others can open)",
+        );
+      return;
+    }
+
+    case "reviewers": {
+      await ensureHost();
+      const id = need(1, "session");
+      const list = await api<ReviewerRecord[]>(`/api/sessions/${encodeURIComponent(id)}/reviewers`);
+      if (flags.json) return out(JSON.stringify(list, null, 2));
+      if (!list.length) return out("(no reviewers invited; see: pp invite)");
+      const lan = await shareBase();
+      for (const r of list) out(describeReviewer(id, r, lan));
       return;
     }
 

@@ -28,7 +28,41 @@ export const SessionStatus = z.enum([
 ]);
 export type SessionStatus = z.infer<typeof SessionStatus>;
 
+/**
+ * A named reviewer: someone the agent invited with a unique URL. The token in
+ * the URL identifies them; feedback they leave is stamped with `{id, name}`.
+ * Not authentication (the host has none): it tells the agent who said what.
+ */
+export const Reviewer = z.object({
+  id: z.string(),
+  /** URL-safe secret from the invite link; never shown to other reviewers. */
+  token: z.string().min(16),
+  /** Display name; the UI asks for one on first visit if the agent gave none. */
+  name: z.string().optional(),
+  createdAt: z.iso.datetime(),
+  /** Last request made with this reviewer's token. */
+  lastSeenAt: z.iso.datetime().optional(),
+  /** Set when the reviewer sent a batch or pressed "done". */
+  submittedAt: z.iso.datetime().optional(),
+});
+export type Reviewer = z.infer<typeof Reviewer>;
+
+/** A reviewer as seen by browsers: everything but the token. */
+export const ReviewerPublic = Reviewer.omit({ token: true });
+export type ReviewerPublic = z.infer<typeof ReviewerPublic>;
+
+/** Who left a feedback item or reply, when it came through an invite link. */
+export const ReviewerRef = z.object({ id: z.string(), name: z.string().optional() });
+export type ReviewerRef = z.infer<typeof ReviewerRef>;
+
+/**
+ * Manifest schema versions: 1 = original (no `version` field), 2 = adds
+ * `reviewers`. Every field added since 1 has a default, so v1 files parse.
+ */
+export const MANIFEST_VERSION = 2;
+
 export const SessionManifest = z.object({
+  version: z.number().int().min(1).default(MANIFEST_VERSION),
   id: SessionId,
   title: z.string().min(1),
   status: SessionStatus.default("drafting"),
@@ -44,6 +78,8 @@ export const SessionManifest = z.object({
   pages: z.array(PageId).default([]),
   /** Free-form metadata the agent may attach (thread id, project name, ...). */
   meta: z.record(z.string(), z.unknown()).default({}),
+  /** Invited reviewers (`pp invite`). Host-managed; tokens live here. */
+  reviewers: z.array(Reviewer).default([]),
 });
 export type SessionManifest = z.infer<typeof SessionManifest>;
 
@@ -101,10 +137,12 @@ export const PageSummary = z.object({
 });
 export type PageSummary = z.infer<typeof PageSummary>;
 
-export const SessionSummary = SessionManifest.extend({
+/** What browsers get: the manifest with reviewer tokens stripped. */
+export const SessionSummary = SessionManifest.omit({ reviewers: true }).extend({
   dir: z.string(),
   pageSummaries: z.array(PageSummary),
   openFeedback: z.number().int(),
+  reviewers: z.array(ReviewerPublic).default([]),
 });
 export type SessionSummary = z.infer<typeof SessionSummary>;
 
@@ -157,6 +195,8 @@ export type Anchor = z.infer<typeof Anchor>;
 export const Reply = z.object({
   id: z.string(),
   author: Author,
+  /** Set when a human reply came through a reviewer's invite link. */
+  reviewer: ReviewerRef.optional(),
   body: z.string(),
   createdAt: z.iso.datetime(),
 });
@@ -168,6 +208,11 @@ export const Feedback = z.object({
   kind: FeedbackKind,
   status: FeedbackStatus.default("open"),
   author: Author.default("human"),
+  /**
+   * Which invited reviewer left this (stamped by the host from the request's
+   * token). Absent for the owner path and for agent/system items.
+   */
+  reviewer: ReviewerRef.optional(),
   anchor: Anchor,
   body: z.string(),
   /** Structured payload for `answer` kind (selected option(s), form values). */
@@ -234,6 +279,16 @@ export const UpdateSession = z.object({
 });
 export type UpdateSession = z.infer<typeof UpdateSession>;
 
+export const CreateReviewer = z.object({
+  name: z.string().trim().min(1).max(80).optional(),
+});
+export type CreateReviewer = z.infer<typeof CreateReviewer>;
+
+export const UpdateReviewer = z.object({
+  name: z.string().trim().min(1).max(80),
+});
+export type UpdateReviewer = z.infer<typeof UpdateReviewer>;
+
 export const OpenPathRequest = z.object({
   sessionId: SessionId,
   path: z.string().min(1),
@@ -252,7 +307,19 @@ export const LiveEvent = z.discriminatedUnion("type", [
   z.object({ type: z.literal("page.removed"), sessionId: SessionId, pageId: PageId }),
   z.object({ type: z.literal("asset.changed"), sessionId: SessionId, path: z.string() }),
   z.object({ type: z.literal("feedback.changed"), sessionId: SessionId, feedbackId: z.string() }),
-  z.object({ type: z.literal("feedback.batch"), sessionId: SessionId, batch: z.number().int() }),
+  z.object({
+    type: z.literal("feedback.batch"),
+    sessionId: SessionId,
+    batch: z.number().int(),
+    /** Present when an invited reviewer sent the batch. */
+    reviewer: ReviewerRef.optional(),
+  }),
+  /** A reviewer pressed "done" without sending new feedback. */
+  z.object({
+    type: z.literal("reviewer.submitted"),
+    sessionId: SessionId,
+    reviewer: ReviewerRef,
+  }),
   z.object({
     type: z.literal("render.error"),
     sessionId: SessionId,

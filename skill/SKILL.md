@@ -34,6 +34,13 @@ is `.claude/skills/plan-presenter/scripts/pp.ts`.)
 4. **Ask for review**: `$PP review <id> --open` marks the session
    _awaiting-review_ and opens the browser on the host machine. Tell the human
    the URL as well.
+   - **Other people reviewing too?** `$PP invite <id> "Chris" "Rudy"` mints one
+     private link per person (start the host with `--lan` first so the link is
+     reachable from their machine). Feedback left through a link is stamped with
+     that reviewer's name, they can only edit or delete their own items, and
+     their "Send to agent" sends only theirs. A link minted without a name asks
+     the person for one on first visit. `$PP reviewers <id>` shows who has opened
+     their link and who has pressed "I'm done".
 5. **Wait**: `$PP wait <id>` blocks (up to 9 minutes, re-run to keep waiting)
    until the human presses **Send to agent**, then prints their feedback as
    Markdown with page paths, line ranges, block excerpts, and any selected text.
@@ -59,7 +66,11 @@ Keep turns short: present, wait, act. Do not poll `pp feedback` in a loop;
 
 Each item carries `id`, the page file path, `lines a-b`, the block type and a
 text excerpt, and `Selected text` when the human highlighted a phrase. Use the
-line range to find the block; the excerpt to double-check.
+line range to find the block; the excerpt to double-check. Items left through
+an invite link also carry `— Reviewer: <name>` in the heading, and the summary
+has a `By reviewer:` count line, so you can answer each person in turn.
+`pp wait` also returns when a reviewer presses "I'm done" with nothing new to
+send.
 
 ## Asking the human structured questions
 
@@ -136,4 +147,6 @@ pp rm <session>                          delete (or unregister an external dir)
 pp version                               skill / host binary / running host versions
 pp update [--check]                      update now instead of waiting for the background check
 pp auto-update [on|off|status]           background self-update (release installs)
+pp invite <session> [name ...] [--count N]   mint private review links, one per person
+pp reviewers <session> [--json]          list invited reviewers: name, done?, link
 ```
