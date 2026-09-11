@@ -231,6 +231,11 @@ Designed so the UI + host packages can later be embedded natively in t3code.
   (downgrade guard); claiming 0.0.1 it downloaded the 35 MB bundle via latest/download in ~2 s,
   decompressed it and reached "download-complete" (the Restart/Later prompt point). Test copy,
   stable app-data and desktop-update.log removed afterwards.
+- 2026-09-11: pushed 27359d9 (host health fields + WebSocket leak fix), abb5710 (auto-update)
+  and 66d2b2e (E2E runs pp async; its first CI run deadlocked on Linux). CI green on all jobs;
+  the auto-update E2E passes on the Linux runner as well as Windows. Next: the user pushes
+  `v0.2.0` (release.yml packages the skill, writes manifest.json, uploads delta patches).
+  Friends on 0.1.0 re-run the install command once.
 
 ## Open questions for the user
 
